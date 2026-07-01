@@ -225,23 +225,22 @@ def main():
     today = session
     res = analyse(m5all, today)
 
-    stamp = dt.datetime.now(dt.timezone.utc).astimezone().strftime("%d/%m %H:%M")
-
-    if res["trade"] is True:
-        msg = fmt_setup(res["sens"], res["entry"], res["sl"], res["tp"])
-        msg += f"\n\n📊 {res['ctx']}\n⏰ Valable jusqu'a 17h30 — clôture avant 21h"
-    elif res["trade"] is False:
-        msg = (f"⚪ OPR {LABEL} {stamp} — Pas de trade aujourd'hui.\n"
-               f"Raison : {res['reason']}.")
-        if res.get("ctx"):
-            msg += f"\n📊 {res['ctx']}"
-    else:
+    if res["trade"] is None:
         # donnees pas pretes : on n'envoie rien (un run de secours reessaiera)
         print("Donnees insuffisantes:", res["reason"])
         return
 
-    print(msg)
-    if send_telegram(msg):
+    if res["trade"] is True:
+        msg = fmt_setup(res["sens"], res["entry"], res["sl"], res["tp"])
+        msg += f"\n\n📊 {res['ctx']}\n⏰ Valable jusqu'a 17h30 — clôture avant 21h"
+        print(msg)
+        sent = send_telegram(msg)
+    else:
+        # Option A : aucun message les jours sans setup (silence total)
+        print(f"Pas de setup ({res['reason']}) — silence, aucun message envoye.")
+        sent = True
+
+    if sent:
         mark_sent(session)
         write_trade(session, res)
 
