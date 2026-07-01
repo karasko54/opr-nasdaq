@@ -23,7 +23,7 @@ jobs:
   opr:
     runs-on: ubuntu-latest
     concurrency:
-      group: opr-run
+      group: opr-state
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
