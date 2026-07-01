@@ -53,3 +53,5 @@ jobs:
           git add .opr_state 2>/dev/null || true
           git commit -m "etat: session envoyee" || echo "rien a committer"
           git push || echo "rien a pousser"
+
+# (redeploy trigger)
