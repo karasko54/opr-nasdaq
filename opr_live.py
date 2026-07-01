@@ -157,6 +157,29 @@ def analyse(m5all, today):
 
 # ───────────────────────── Main ─────────────────────────
 STATE_FILE = os.environ.get("OPR_STATE", ".opr_state")
+TRADE_FILE = os.environ.get("OPR_TRADE", "trade_today.json")
+
+
+def write_trade(session, res):
+    """Enregistre le trade du jour pour le surveillant (BE/TP/SL)."""
+    import json
+    if res.get("trade") is True:
+        entry, sl, tp = res["entry"], res["sl"], res["tp"]
+        side = 1 if res["sens"] == "ACHAT" else -1
+        risk = abs(entry - sl)
+        be_trig = (entry + risk * BE_R * side) if BE_R else None
+        data = {
+            "date": str(session), "status": "valid", "label": LABEL,
+            "sens": res["sens"], "side": side,
+            "entry": entry, "sl": sl, "tp": tp, "risk": risk,
+            "be_trig": be_trig, "be_r": BE_R, "tp_r": TP_R,
+            "flags": {"entered": False, "be": False, "closed": False, "reason": None},
+            "notified": {"entered": False, "be": False, "closed": False},
+        }
+    else:
+        data = {"date": str(session), "status": "none"}
+    with open(TRADE_FILE, "w") as f:
+        json.dump(data, f)
 
 
 def already_sent(session_date):
@@ -220,6 +243,7 @@ def main():
     print(msg)
     if send_telegram(msg):
         mark_sent(session)
+        write_trade(session, res)
 
 
 if __name__ == "__main__":
