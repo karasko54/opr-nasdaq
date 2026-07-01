@@ -1,0 +1,55 @@
+name: OPR Nasdaq -> Telegram
+
+# Se reveille tout seul apres l'ouverture US (09:45 New York).
+# Deux horaires UTC pour couvrir l'heure d'ete ET l'heure d'hiver des USA :
+#   13:50 UTC = 09:50 New York en ETE   (le run d'hiver sortira tout seul)
+#   14:50 UTC = 09:50 New York en HIVER (le run d'ete est deja parti -> anti-doublon)
+# Le script contient un garde-fou : il n'agit qu'entre 09:45 et 11:30 New York.
+on:
+  schedule:
+    - cron: "50 13 * * 1-5"
+    - cron: "50 14 * * 1-5"
+  workflow_dispatch:        # bouton "Run workflow" pour tester a la main
+    inputs:
+      test:
+        description: "Envoyer un message de TEST (donnees fictives)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write           # pour memoriser la session deja envoyee (anti-doublon)
+
+jobs:
+  opr:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: opr-run
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dependances
+        run: pip install -r requirements.txt
+
+      - name: Lancer le robot OPR
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPR_SYMBOL: "^NDX"
+          OPR_ASSET: "nas"
+          # en run manuel avec la case cochee -> message de test ; sinon vide
+          OPR_TEST: ${{ (github.event_name == 'workflow_dispatch' && inputs.test) && '1' || '' }}
+        run: python opr_live.py
+
+      - name: Memoriser la session envoyee
+        if: always()
+        run: |
+          git config user.name  "opr-bot"
+          git config user.email "opr-bot@users.noreply.github.com"
+          git add .opr_state 2>/dev/null || true
+          git commit -m "etat: session envoyee" || echo "rien a committer"
+          git push || echo "rien a pousser"
