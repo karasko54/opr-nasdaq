@@ -41,6 +41,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OPR_SYMBOL: "^NDX"
           OPR_ASSET: "nas"
+          OPR_DIAG: "1"   # TEMPORAIRE : mesure le retard des donnees et l'envoie sur Telegram
           # en run manuel avec la case cochee -> message de test ; sinon vide
           OPR_TEST: ${{ (github.event_name == 'workflow_dispatch' && inputs.test) && '1' || '' }}
         run: python opr_live.py

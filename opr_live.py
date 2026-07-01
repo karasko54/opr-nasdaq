@@ -222,6 +222,19 @@ def main():
         return
 
     m5all = load_live()
+
+    # --- Diagnostic temporaire : mesure le retard des donnees Yahoo ---
+    if os.environ.get("OPR_DIAG") == "1":
+        last = m5all.index[-1].tz_convert("UTC")
+        nowu = pd.Timestamp.now(tz="UTC")
+        lag = (nowu - last).total_seconds() / 60
+        send_telegram(
+            "🔧 Diagnostic données ^NDX (cloud, PC éteint)\n"
+            f"Dernière bougie : {last:%H:%M} UTC\n"
+            f"Maintenant : {nowu:%H:%M} UTC\n"
+            f"➡️ Retard ≈ {lag:.0f} min"
+        )
+
     today = session
     res = analyse(m5all, today)
 
