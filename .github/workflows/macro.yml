@@ -1,10 +1,12 @@
 name: Macro USD -> Telegram
 
 # Brief macro du matin (lun-ven) : les grosses news US qui bougent le NASDAQ.
-# 07:00 UTC = 09:00 Paris en ete / 08:00 Paris en hiver (le matin dans tous les cas).
+# 07:07 UTC = ~09:07 Paris en ete / ~08:07 Paris en hiver (le matin dans tous les cas).
+# Volontairement decale de l'heure ronde (07:00) qui est la minute la plus
+# embouteillee chez GitHub -> depart plus fiable a l'heure.
 on:
   schedule:
-    - cron: "0 7 * * 1-5"
+    - cron: "7 7 * * 1-5"
   workflow_dispatch:
 
 jobs:
