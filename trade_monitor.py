@@ -12,6 +12,7 @@ Meme bot Telegram que les autres messages.
 """
 import os
 import sys
+import csv
 import json
 import datetime as dt
 
@@ -25,11 +26,31 @@ try:
 except Exception:
     pass
 
-TRADE_FILE = os.environ.get("OPR_TRADE", "trade_today.json")
+TRADE_FILE   = os.environ.get("OPR_TRADE", "trade_today.json")
+JOURNAL_FILE = os.environ.get("OPR_JOURNAL", "journal.csv")
 
 
 def r(x):
     return f"{x:,.1f}".replace(",", " ")
+
+
+def journal_append(T, result_R, reason):
+    """Ajoute une ligne au journal des trades (cree l'entete si besoin)."""
+    orH, orL = T.get("orH"), T.get("orL")
+    rng = round(orH - orL, 1) if (orH is not None and orL is not None) else ""
+    row = {
+        "date": T["date"], "actif": T["label"], "sens": T["sens"],
+        "entree": round(T["entry"], 1), "sl": round(T["sl"], 1), "tp": round(T["tp"], 1),
+        "range": rng, "resultat_R": round(result_R, 2), "sortie": reason,
+        "contexte": T.get("ctx", ""), "plan_respecte": "oui",
+    }
+    new_file = not os.path.exists(JOURNAL_FILE) or os.path.getsize(JOURNAL_FILE) == 0
+    with open(JOURNAL_FILE, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(row.keys()))
+        if new_file:
+            w.writeheader()
+        w.writerow(row)
+    print(f"Journal: ligne ajoutee ({T['date']} {reason} {result_R:+.2f}R)")
 
 
 def main():
@@ -117,7 +138,20 @@ def main():
             events.append(f"⏰ Clôture 21h — {lbl}. Pense à solder ta position.")
         notified["closed"] = True
 
-    flags.update(entered=entered, be=be, closed=closed or flags["closed"], reason=reason)
+    # journal automatique : une ligne des qu'un vrai trade (entree declenchee) se termine
+    if closed and entered and not flags.get("journaled", False):
+        if reason == "TP":
+            result_R = float(T["tp_r"])
+        elif reason == "SL":
+            result_R = 0.0 if be else -1.0
+        else:  # CLOSE 21h
+            last = float(bars["close"].iloc[-1]) if len(bars) else entry
+            result_R = ((last - entry) if side == 1 else (entry - last)) / T["risk"]
+        journal_append(T, result_R, reason)
+        flags["journaled"] = True
+
+    flags.update(entered=entered, be=be, closed=closed or flags["closed"],
+                 reason=reason, journaled=flags.get("journaled", False))
     T["flags"] = flags; T["notified"] = notified
     with open(TRADE_FILE, "w") as f:
         json.dump(T, f)

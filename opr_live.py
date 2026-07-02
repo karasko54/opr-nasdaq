@@ -172,8 +172,10 @@ def write_trade(session, res):
             "date": str(session), "status": "valid", "label": LABEL,
             "sens": res["sens"], "side": side,
             "entry": entry, "sl": sl, "tp": tp, "risk": risk,
+            "orH": res.get("orH"), "orL": res.get("orL"), "ctx": res.get("ctx"),
             "be_trig": be_trig, "be_r": BE_R, "tp_r": TP_R,
-            "flags": {"entered": False, "be": False, "closed": False, "reason": None},
+            "flags": {"entered": False, "be": False, "closed": False,
+                      "reason": None, "journaled": False},
             "notified": {"entered": False, "be": False, "closed": False},
         }
     else:
