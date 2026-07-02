@@ -1,14 +1,20 @@
 name: OPR Nasdaq -> Telegram
 
 # Se reveille tout seul apres l'ouverture US (09:45 New York).
-# Deux horaires UTC pour couvrir l'heure d'ete ET l'heure d'hiver des USA :
-#   13:50 UTC = 09:50 New York en ETE   (le run d'hiver sortira tout seul)
-#   14:50 UTC = 09:50 New York en HIVER (le run d'ete est deja parti -> anti-doublon)
-# Le script contient un garde-fou : il n'agit qu'entre 09:45 et 11:30 New York.
+# Plusieurs reveils repartis pour couvrir l'heure d'ete ET d'hiver US, et
+# rattraper un eventuel petit retard de GitHub. Le script a un garde-fou
+# (n'agit qu'entre 09:45 et 11:30 New York) + un anti-doublon (1 seul message).
+#   ETE  (EDT) : 09:45 NY = 13:45 UTC ... 11:30 NY = 15:30 UTC
+#   HIVER(EST) : 09:45 NY = 14:45 UTC ... 11:30 NY = 16:30 UTC
 on:
   schedule:
-    - cron: "50 13 * * 1-5"
+    - cron: "45 13 * * 1-5"
+    - cron: "5 14 * * 1-5"
+    - cron: "25 14 * * 1-5"
     - cron: "50 14 * * 1-5"
+    - cron: "15 15 * * 1-5"
+    - cron: "45 15 * * 1-5"
+    - cron: "15 16 * * 1-5"
   workflow_dispatch:        # declencheur externe (cron-job.org) OU bouton manuel
     inputs:
       test:
