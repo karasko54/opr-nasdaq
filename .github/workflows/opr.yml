@@ -9,12 +9,12 @@ on:
   schedule:
     - cron: "50 13 * * 1-5"
     - cron: "50 14 * * 1-5"
-  workflow_dispatch:        # bouton "Run workflow" pour tester a la main
+  workflow_dispatch:        # declencheur externe (cron-job.org) OU bouton manuel
     inputs:
       test:
         description: "Envoyer un message de TEST (donnees fictives)"
         type: boolean
-        default: true
+        default: false          # declenchement externe = VRAI run ; cocher pour tester
 
 permissions:
   contents: write           # pour memoriser la session deja envoyee (anti-doublon)
