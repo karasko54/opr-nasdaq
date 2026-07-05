@@ -51,16 +51,20 @@ LABEL    = "NAS100"
 # ───────────────────────── Telegram ─────────────────────────
 def send_telegram(text):
     token = os.environ.get("TELEGRAM_TOKEN")
-    chat  = os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or not chat:
-        print("!! TELEGRAM_TOKEN / TELEGRAM_CHAT_ID manquants — message non envoye :\n")
+    chats = [c.strip() for c in (os.environ.get("TELEGRAM_CHAT_ID") or "").split(",") if c.strip()]
+    if not token or not chats:
+        print("!! TELEGRAM_TOKEN / TELEGRAM_CHAT_ID manquants - message non envoye :")
         print(text)
         return False
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    r = requests.post(url, data={"chat_id": chat, "text": text}, timeout=30)
-    ok = r.ok and r.json().get("ok")
-    print("Telegram:", "OK" if ok else f"ERREUR {r.status_code} {r.text[:200]}")
-    return ok
+    ok_all = True
+    for chat in chats:  # ex: "12345,-100987" -> perso + canal
+        r = requests.post(url, data={"chat_id": chat, "text": text}, timeout=30)
+        ok = r.ok and r.json().get("ok")
+        dest = chat[:4] + "..." if len(chat) > 6 else chat
+        print(f"Telegram {dest}:", "OK" if ok else f"ERREUR {r.status_code} {r.text[:200]}")
+        ok_all = ok_all and ok
+    return ok_all
 
 
 def fmt_setup(sens, entry, sl, tp):
