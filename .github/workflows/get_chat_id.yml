@@ -1,0 +1,31 @@
+name: Detecter ID canal Telegram
+
+on:
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lire les updates du bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: |
+          curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/getUpdates" > upd.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("upd.json"))
+          if not d.get("ok"):
+              print("ERREUR API:", d); raise SystemExit(1)
+          seen = {}
+          for u in d.get("result", []):
+              for k in ("channel_post", "edited_channel_post", "message", "my_chat_member"):
+                  if k in u:
+                      c = u[k]["chat"]
+                      seen[c["id"]] = (c.get("type"), c.get("title") or c.get("username") or "?")
+          if not seen:
+              print("AUCUN update trouve.")
+              print("-> Verifier: bot ADMIN du canal + poster un message dans le canal, puis relancer.")
+          for i, (t, n) in seen.items():
+              print(f"TROUVE  type={t:10s}  titre={n}  ->  chat_id = {i}")
+          PY
