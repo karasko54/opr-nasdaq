@@ -7,25 +7,14 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     steps:
-      - name: Lire les updates du bot
+      - name: Diagnostic bot / canal
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CANAL: "-1002074635129"
         run: |
-          curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/getUpdates" > upd.json
-          python3 - <<'PY'
-          import json
-          d = json.load(open("upd.json"))
-          if not d.get("ok"):
-              print("ERREUR API:", d); raise SystemExit(1)
-          seen = {}
-          for u in d.get("result", []):
-              for k in ("channel_post", "edited_channel_post", "message", "my_chat_member"):
-                  if k in u:
-                      c = u[k]["chat"]
-                      seen[c["id"]] = (c.get("type"), c.get("title") or c.get("username") or "?")
-          if not seen:
-              print("AUCUN update trouve.")
-              print("-> Verifier: bot ADMIN du canal + poster un message dans le canal, puis relancer.")
-          for i, (t, n) in seen.items():
-              print(f"TROUVE  type={t:10s}  titre={n}  ->  chat_id = {i}")
-          PY
+          BOT_ID=$(curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/getMe" | python3 -c "import sys,json;print(json.load(sys.stdin)['result']['id'])")
+          echo "Bot id: $BOT_ID"
+          echo "--- Statut du bot dans le canal ---"
+          curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/getChatMember?chat_id=$CANAL&user_id=$BOT_ID" | python3 -m json.tool
+          echo "--- Infos canal ---"
+          curl -s "https://api.telegram.org/bot$TELEGRAM_TOKEN/getChat?chat_id=$CANAL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(json.dumps({k:d.get('result',{}).get(k) for k in ('id','title','type')}, ensure_ascii=False) if d.get('ok') else d)"
