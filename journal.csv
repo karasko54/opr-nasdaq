@@ -1,3 +1,4 @@
 date,actif,sens,entree,sl,tp,range,resultat_R,sortie,contexte,plan_respecte
 2026-07-08,NAS100,VENTE,29014.8,29087.2,28761.6,144.7,-1.0,SL,EMA20 < EMA50 (M5) | Supertrend H1 baissier,oui
 2026-07-09,NAS100,ACHAT,29653.2,29557.5,29988.4,191.5,-1.0,SL,EMA20 > EMA50 (M5) | Supertrend H1 haussier,oui
+2026-07-10,NAS100,ACHAT,29729.9,29660.5,29972.8,138.8,-1.0,SL,EMA20 > EMA50 (M5) | Supertrend H1 haussier,oui
