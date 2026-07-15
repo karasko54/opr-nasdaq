@@ -46,6 +46,9 @@ SYMBOL   = os.environ.get("OPR_SYMBOL", "^NDX")
 ASSET    = os.environ.get("OPR_ASSET", "nas")
 TP_R, BE_R, SKIP_MONTHS = ASSETS[ASSET]
 LABEL    = "NAS100"
+# tampon anti-fausse-cassure : l'entree STOP est placee a X% du range AU-DELA du bord
+# (0.40 = +40% du range). Filtre les fausses cassures -> passe la strategie de perdante a gagnante.
+BUFFER   = float(os.environ.get("OPR_BUFFER", "0.40"))
 
 
 # ───────────────────────── Telegram ─────────────────────────
@@ -146,12 +149,13 @@ def analyse(m5all, today):
         return {"trade": False, "reason": "filtres opposes", "ctx": ctx,
                 "orH": orH, "orL": orL}
 
+    rng = orH - orL
     if long_ok:
-        entry, sl = orH, orMid
+        entry, sl = orH + BUFFER * rng, orMid   # STOP tamponne : +40% du range au-dessus du haut
         tp = entry + (entry - sl) * TP_R
         sens = "ACHAT"
     else:
-        entry, sl = orL, orMid
+        entry, sl = orL - BUFFER * rng, orMid    # STOP tamponne : +40% du range en dessous du bas
         tp = entry - (sl - entry) * TP_R
         sens = "VENTE"
 
