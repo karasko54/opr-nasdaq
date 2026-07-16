@@ -28,12 +28,23 @@ jobs:
       - name: Installer les dependances
         run: pip install -r requirements.txt
 
-      - name: Surveiller le trade
+      - name: Surveiller le trade (NASDAQ)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OPR_SYMBOL: "^NDX"
           OPR_ASSET: "nas"
+          OPR_LABEL: "NAS100"
+        run: python trade_monitor.py
+
+      - name: Surveiller le trade (BTC)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPR_SYMBOL: "BTC-USD"
+          OPR_ASSET: "btc"
+          OPR_LABEL: "BTC"
+          OPR_TRADE: "trade_today_btc.json"
         run: python trade_monitor.py
 
       - name: Memoriser l'avancement du trade
@@ -42,6 +53,6 @@ jobs:
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
           git pull --rebase --autostash origin master || true
-          git add trade_today.json .opr_state journal.csv 2>/dev/null || true
-          git commit -m "etat: avancement trade + journal" || echo "rien a committer"
+          git add trade_today.json .opr_state journal.csv trade_today_btc.json .opr_state_btc 2>/dev/null || true
+          git commit -m "etat: avancement trade + journal (NASDAQ + BTC)" || echo "rien a committer"
           git push || echo "rien a pousser"
