@@ -41,13 +41,28 @@ jobs:
       - name: Installer les dependances
         run: pip install -r requirements.txt
 
-      - name: Lancer le robot OPR
+      - name: Lancer le robot OPR (NASDAQ)
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           OPR_SYMBOL: "^NDX"
           OPR_ASSET: "nas"
+          OPR_LABEL: "NAS100"
+          OPR_BUFFER: "0.40"
           # en run manuel avec la case cochee -> message de test ; sinon vide
+          OPR_TEST: ${{ (github.event_name == 'workflow_dispatch' && inputs.test) && '1' || '' }}
+        run: python opr_live.py
+
+      - name: Lancer le robot OPR (BTC)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPR_SYMBOL: "BTC-USD"
+          OPR_ASSET: "btc"
+          OPR_LABEL: "BTC"
+          OPR_BUFFER: "0.50"
+          OPR_STATE: ".opr_state_btc"
+          OPR_TRADE: "trade_today_btc.json"
           OPR_TEST: ${{ (github.event_name == 'workflow_dispatch' && inputs.test) && '1' || '' }}
         run: python opr_live.py
 
@@ -57,6 +72,6 @@ jobs:
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
           git pull --rebase --autostash origin master || true
-          git add .opr_state trade_today.json 2>/dev/null || true
-          git commit -m "etat: session envoyee" || echo "rien a committer"
+          git add .opr_state trade_today.json .opr_state_btc trade_today_btc.json 2>/dev/null || true
+          git commit -m "etat: session envoyee (NASDAQ + BTC)" || echo "rien a committer"
           git push || echo "rien a pousser"
