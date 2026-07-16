@@ -45,7 +45,7 @@ from backtest_opr import (
 SYMBOL   = os.environ.get("OPR_SYMBOL", "^NDX")
 ASSET    = os.environ.get("OPR_ASSET", "nas")
 TP_R, BE_R, SKIP_MONTHS = ASSETS[ASSET]
-LABEL    = "NAS100"
+LABEL    = os.environ.get("OPR_LABEL", "NAS100")
 # tampon anti-fausse-cassure : l'entree STOP est placee a X% du range AU-DELA du bord
 # (0.40 = +40% du range). Filtre les fausses cassures -> passe la strategie de perdante a gagnante.
 BUFFER   = float(os.environ.get("OPR_BUFFER", "0.40"))
