@@ -7,9 +7,14 @@ et sort les metriques (trades, win rate, profit factor, R total, drawdown).
 
 Usage:
     python backtest_opr.py CHEMIN_DU_CSV [--tz UTC] [--tp 4] [--be 1] [--asset gold]
+                           [--spread PTS] [--slippage PTS] [--commission R] [--no-costs]
 
 Le CSV doit contenir: datetime, open, high, low, close [,volume]
 (formats de date courants gérés automatiquement).
+
+FRAIS : par defaut, chaque trade est net de spread + slippage + commission
+(table COSTS ci-dessous, a ajuster selon TON broker). --no-costs pour un
+backtest theorique sans frais (ancien comportement).
 """
 import sys, argparse
 import numpy as np
@@ -35,6 +40,23 @@ ASSETS = {
     "btc":    (3.5, None, set()),
     "wti":    (3.5, 1.0, set()),
 }
+
+# ───────────────────────── Frais / spread par actif ─────────────────────────
+# Cout REEL preleve par le broker, en POINTS de prix (unite de l'actif), a
+# ajuster selon TON broker/compte :
+#   spread     = ecart bid/ask, paye a l'aller-retour
+#   slippage   = derapage sur l'entree STOP (la cassure part toujours contre toi)
+#   commission = frais fixes eventuels, exprimes directement en R par trade
+# Total deduit par trade = (spread + slippage) / risque_en_points + commission_R
+COSTS = {
+    "gold":   {"spread": 0.30,   "slippage": 0.10,   "commission_R": 0.0},
+    "nas":    {"spread": 2.0,    "slippage": 1.0,    "commission_R": 0.0},
+    "us30":   {"spread": 3.0,    "slippage": 1.5,    "commission_R": 0.0},
+    "usdcad": {"spread": 0.0002, "slippage": 0.0001, "commission_R": 0.0},
+    "btc":    {"spread": 30.0,   "slippage": 15.0,   "commission_R": 0.0},
+    "wti":    {"spread": 0.03,   "slippage": 0.02,   "commission_R": 0.0},
+}
+DEFAULT_COST = {"spread": 0.0, "slippage": 0.0, "commission_R": 0.0}
 
 # ───────────────────────── Chargement donnees ─────────────────────────
 def load_csv(path, tz):
@@ -103,7 +125,7 @@ def supertrend(df, atr_n, fact):
     return dir_   # +1 = haussier (vert), -1 = baissier (rouge)
 
 # ───────────────────────── Backtest ─────────────────────────
-def run(df, tp_r, be_r, skip_months):
+def run(df, tp_r, be_r, skip_months, cost_pts=0.0, commission_R=0.0):
     m1  = df
     m5  = resample(df, "5min")
     h1  = resample(df, "60min")
@@ -180,10 +202,15 @@ def run(df, tp_r, be_r, skip_months):
             exit_reason = "CLOSE"
         if result_R is None:
             continue   # ordre jamais declenche
-        pnl = equity * (RISK_PCT/100) * result_R
+        # frais reels : spread+slippage rapportes au risque, + commission fixe
+        cost_R = (cost_pts / risk if risk > 0 else 0.0) + commission_R
+        gross_R = result_R
+        net_R = gross_R - cost_R
+        pnl = equity * (RISK_PCT/100) * net_R
         equity += pnl
         trades.append({"date": str(day), "side": "L" if side==1 else "S",
-                       "R": round(result_R,2), "reason": exit_reason,
+                       "R": round(net_R,2), "R_brut": round(gross_R,2),
+                       "frais_R": round(cost_R,3), "reason": exit_reason,
                        "equity": round(equity,2)})
     return pd.DataFrame(trades)
 
@@ -198,7 +225,11 @@ def metrics(tr):
     out = []
     out.append(f"Trades              : {len(tr)}")
     out.append(f"Win rate            : {len(wins)/len(tr)*100:.2f} %")
-    out.append(f"R total (somme)     : {tr['R'].sum():.1f} R")
+    out.append(f"R total (NET frais) : {tr['R'].sum():.1f} R")
+    if "frais_R" in tr.columns:
+        out.append(f"  - R brut (theo.)  : {tr['R_brut'].sum():.1f} R")
+        out.append(f"  - frais deduits   : -{tr['frais_R'].sum():.1f} R "
+                   f"({tr['frais_R'].mean():.3f} R/trade)")
     out.append(f"Profit factor       : {pf:.3f}")
     out.append(f"Gain moyen/trade    : {tr['R'].mean():.3f} R")
     out.append(f"Max drawdown        : {dd.max()*100:.2f} %")
@@ -214,15 +245,34 @@ if __name__ == "__main__":
     ap.add_argument("--asset", default="gold", choices=list(ASSETS))
     ap.add_argument("--tp", type=float, default=None)
     ap.add_argument("--be", type=float, default=None)
+    ap.add_argument("--spread", type=float, default=None, help="spread en points (override)")
+    ap.add_argument("--slippage", type=float, default=None, help="slippage entree en points (override)")
+    ap.add_argument("--commission", type=float, default=None, help="commission en R/trade (override)")
+    ap.add_argument("--no-costs", action="store_true", help="backtest theorique sans frais")
     a = ap.parse_args()
     tp_r, be_r, skip = ASSETS[a.asset]
     if a.tp is not None: tp_r = a.tp
     if a.be is not None: be_r = (a.be if a.be > 0 else None)
+
+    # frais : table par actif, override possible en ligne de commande
+    cost = dict(COSTS.get(a.asset, DEFAULT_COST))
+    spread   = a.spread     if a.spread     is not None else cost["spread"]
+    slippage = a.slippage   if a.slippage   is not None else cost["slippage"]
+    commission_R = a.commission if a.commission is not None else cost["commission_R"]
+    if a.no_costs:
+        spread = slippage = commission_R = 0.0
+    cost_pts = spread + slippage
+
     print(f"Chargement {a.csv} (tz={a.tz})...")
     df = load_csv(a.csv, a.tz)
     print(f"  {len(df):,} bougies M1 | du {df.index.min()} au {df.index.max()}")
-    print(f"Actif={a.asset}  TP={tp_r}R  BE={be_r}  mois_exclus={sorted(skip) or 'aucun'}\n")
-    tr = run(df, tp_r, be_r, skip)
+    print(f"Actif={a.asset}  TP={tp_r}R  BE={be_r}  mois_exclus={sorted(skip) or 'aucun'}")
+    if a.no_costs:
+        print("Frais : AUCUN (--no-costs, backtest theorique)\n")
+    else:
+        print(f"Frais : spread={spread:g} + slippage={slippage:g} pts  "
+              f"commission={commission_R:g} R/trade\n")
+    tr = run(df, tp_r, be_r, skip, cost_pts, commission_R)
     print(metrics(tr))
     tr.to_csv("resultats_trades.csv", index=False)
     print("\nDetail des trades -> resultats_trades.csv")
