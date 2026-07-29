@@ -1,1 +1,1 @@
-{"date": "2026-07-28", "status": "valid", "label": "BTC", "sens": "VENTE", "side": -1, "entry": 62617.373046875, "sl": 63081.650390625, "tp": 60992.40234375, "risk": 464.27734375, "orH": 63313.7890625, "orL": 62849.51171875, "ctx": "EMA20 < EMA50 (M5) | Supertrend H1 baissier", "be_trig": null, "be_r": null, "tp_r": 3.5, "flags": {"entered": false, "be": false, "closed": true, "reason": null, "journaled": false}, "notified": {"entered": false, "be": false, "closed": true}}
+{"date": "2026-07-29", "status": "none"}
