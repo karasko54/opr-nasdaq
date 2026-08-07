@@ -6,6 +6,9 @@ name: OPR Nasdaq -> Telegram
 # (n'agit qu'entre 09:45 et 11:30 New York) + un anti-doublon (1 seul message).
 #   ETE  (EDT) : 09:45 NY = 13:45 UTC ... 11:30 NY = 15:30 UTC
 #   HIVER(EST) : 09:45 NY = 14:45 UTC ... 11:30 NY = 16:30 UTC
+# HEURE D'HIVER : opr_live.py attend l'ouverture s'il est declenche trop tot
+# (ex: trigger externe fixe a 13:48 UTC = 08:48 NY en hiver) -> un seul horaire
+# de declenchement fonctionne toute l'annee, aucun reglage saisonnier requis.
 on:
   schedule:
     - cron: "45 13 * * 1-5"
