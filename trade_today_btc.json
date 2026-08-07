@@ -1,1 +1,1 @@
-{"date": "2026-08-06", "status": "none"}
+{"date": "2026-08-07", "status": "valid", "label": "BTC", "sens": "ACHAT", "side": 1, "entry": 65400.970703125, "sl": 65175.169921875, "tp": 66191.2734375, "risk": 225.80078125, "orH": 65288.0703125, "orL": 65062.26953125, "ctx": "EMA20 > EMA50 (M5) | Supertrend H1 haussier", "be_trig": null, "be_r": null, "tp_r": 3.5, "flags": {"entered": false, "be": false, "closed": false, "reason": null, "journaled": false}, "notified": {"entered": false, "be": false, "closed": false}}
