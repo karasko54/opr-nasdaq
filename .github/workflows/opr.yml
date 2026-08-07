@@ -6,6 +6,9 @@ name: OPR Nasdaq -> Telegram
 # (n'agit qu'entre 09:45 et 11:30 New York) + un anti-doublon (1 seul message).
 #   ETE  (EDT) : 09:45 NY = 13:45 UTC ... 11:30 NY = 15:30 UTC
 #   HIVER(EST) : 09:45 NY = 14:45 UTC ... 11:30 NY = 16:30 UTC
+# HEURE D'HIVER : opr_live.py attend l'ouverture s'il est declenche trop tot
+# (ex: trigger externe fixe a 13:48 UTC = 08:48 NY en hiver) -> un seul horaire
+# de declenchement fonctionne toute l'annee, aucun reglage saisonnier requis.
 on:
   schedule:
     - cron: "45 13 * * 1-5"
@@ -71,7 +74,29 @@ jobs:
         run: |
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
-          git pull --rebase --autostash origin master || true
           git add .opr_state trade_today.json .opr_state_btc trade_today_btc.json 2>/dev/null || true
-          git commit -m "etat: session envoyee (NASDAQ + BTC)" || echo "rien a committer"
-          git push || echo "rien a pousser"
+          if git diff --cached --quiet; then
+            echo "rien a committer"; exit 0
+          fi
+          git commit -m "etat: session envoyee (NASDAQ + BTC)"
+          # push robuste : re-synchronise et reessaie au lieu d'avaler l'echec en silence
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin master && git push; then
+              echo "push OK (tentative $i)"; exit 0
+            fi
+            echo "push echoue, nouvelle tentative dans $((i*3))s..."; sleep $((i*3))
+          done
+          echo "!! push definitivement echoue apres 5 tentatives"; exit 1
+
+      - name: Alerte Telegram si echec
+        if: failure()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          IFS=',' read -ra CHATS <<< "$TELEGRAM_CHAT_ID"
+          MSG="⚠️ ${GITHUB_WORKFLOW} a échoué (run #${GITHUB_RUN_NUMBER}). Détails : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for c in "${CHATS[@]}"; do
+            [ -n "$c" ] && curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${c}" --data-urlencode "text=${MSG}" >/dev/null || true
+          done

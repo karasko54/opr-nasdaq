@@ -23,6 +23,7 @@ Config via variables d'environnement (secrets GitHub Actions) :
 """
 import os
 import sys
+import time
 import datetime as dt
 
 import numpy as np
@@ -216,14 +217,34 @@ def main():
         send_telegram(msg)
         return
 
-    # garde-fou horaire : on n'agit qu'entre 09:45 et 11:30 heure de New York
-    # (gere automatiquement l'heure d'ete/hiver, quel que soit le cron UTC)
+    # garde-fou horaire : la fenetre valide est 09:45-11:30 heure de New York
+    # (gere automatiquement l'heure d'ete/hiver, quel que soit le cron UTC).
     now_ny = pd.Timestamp.now(tz=NY_TZ)
-    if not (dt.time(9, 45) <= now_ny.time() <= dt.time(11, 30)):
-        print(f"Hors fenetre NY ({now_ny:%H:%M} NY) — rien a faire.")
-        return
     if now_ny.weekday() >= 5:
         print("Week-end — rien a faire.")
+        return
+
+    WIN_START, WIN_END = dt.time(9, 45), dt.time(11, 30)
+    EARLY_OK = dt.time(8, 30)
+    # Declenche AVANT l'ouverture de la fenetre ? (cas hiver : un trigger
+    # externe fixe en UTC tombe a 08:48 NY au lieu de 09:48 NY en ete.)
+    # -> on ATTEND l'ouverture au lieu d'abandonner : un seul horaire de
+    # declenchement fonctionne ainsi toute l'annee, sans reglage saisonnier.
+    # (repo public = minutes GitHub Actions gratuites, l'attente ne coute rien)
+    if now_ny.time() < WIN_START:
+        if now_ny.time() >= EARLY_OK:
+            target = now_ny.normalize() + pd.Timedelta(hours=9, minutes=46)
+            wait_s = max((target - now_ny).total_seconds(), 0)
+            print(f"Declenche a {now_ny:%H:%M} NY (avant la fenetre) — "
+                  f"attente de {wait_s/60:.0f} min jusqu'a 09:46 NY...")
+            time.sleep(wait_s)
+            now_ny = pd.Timestamp.now(tz=NY_TZ)
+        else:
+            print(f"Declenche trop tot ({now_ny:%H:%M} NY, avant 08:30) — rien a faire.")
+            return
+
+    if not (WIN_START <= now_ny.time() <= WIN_END):
+        print(f"Hors fenetre NY ({now_ny:%H:%M} NY) — rien a faire.")
         return
 
     session = now_ny.date()

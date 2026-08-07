@@ -27,3 +27,16 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python macro_news.py
+
+      - name: Alerte Telegram si echec
+        if: failure()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          IFS=',' read -ra CHATS <<< "$TELEGRAM_CHAT_ID"
+          MSG="⚠️ ${GITHUB_WORKFLOW} a échoué (run #${GITHUB_RUN_NUMBER}). Détails : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for c in "${CHATS[@]}"; do
+            [ -n "$c" ] && curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${c}" --data-urlencode "text=${MSG}" >/dev/null || true
+          done
