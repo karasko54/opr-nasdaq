@@ -28,7 +28,6 @@ import datetime as dt
 
 import numpy as np
 import pandas as pd
-import requests
 
 # console Windows: force l'UTF-8 pour afficher les emojis sans planter
 try:
@@ -53,22 +52,9 @@ BUFFER   = float(os.environ.get("OPR_BUFFER", "0.40"))
 
 
 # ───────────────────────── Telegram ─────────────────────────
-def send_telegram(text):
-    token = os.environ.get("TELEGRAM_TOKEN")
-    chats = [c.strip() for c in (os.environ.get("TELEGRAM_CHAT_ID") or "").split(",") if c.strip()]
-    if not token or not chats:
-        print("!! TELEGRAM_TOKEN / TELEGRAM_CHAT_ID manquants - message non envoye :")
-        print(text)
-        return False
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    ok_all = True
-    for chat in chats:  # ex: "12345,-100987" -> perso + canal
-        r = requests.post(url, data={"chat_id": chat, "text": text}, timeout=30)
-        ok = r.ok and r.json().get("ok")
-        dest = chat[:4] + "..." if len(chat) > 6 else chat
-        print(f"Telegram {dest}:", "OK" if ok else f"ERREUR {r.status_code} {r.text[:200]}")
-        ok_all = ok_all and ok
-    return ok_all
+# Implementation unique dans notify.py (avec reessais). Re-exporte ici pour
+# que `from opr_live import send_telegram` continue de fonctionner.
+from notify import send_telegram  # noqa: E402,F401
 
 
 def fmt_setup(sens, entry, sl, tp):

@@ -19,7 +19,8 @@ import datetime as dt
 import pandas as pd
 
 from backtest_opr import NY_TZ, OPEN_END, ENTRY_END, FORCE_CLOSE
-from opr_live import send_telegram, load_live, DataUnavailable
+from notify import send_telegram
+from opr_live import load_live, DataUnavailable
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -62,8 +63,10 @@ def main():
     if T.get("status") != "valid":
         print("Pas de setup valide aujourd'hui — rien a surveiller.")
         return
-    if T["flags"]["closed"]:
-        print("Trade deja termine — rien a surveiller.")
+    # On ne s'arrete que si le trade est termine ET que la notif de cloture est
+    # bien partie : sinon on repasse pour rejouer l'envoi rate.
+    if T["flags"]["closed"] and T["notified"].get("closed"):
+        print("Trade deja termine et notifie — rien a surveiller.")
         return
 
     today = dt.date.fromisoformat(T["date"])
@@ -116,35 +119,33 @@ def main():
     if entered and not closed and now_ny >= ts_close:
         closed = True; reason = "CLOSE"
 
+    # (cle de notification, message) — la cle n'est cochee qu'apres envoi reussi
     events = []
     lbl = T["label"]
 
     # jamais entre et fenetre finie -> ordre annule
     if not entered and now_ny > ts_entry_end:
         if not notified["closed"]:
-            events.append(f"⚪ {lbl} — pas de cassure avant 17h30, ordre annulé. Pas de trade aujourd'hui.")
-            notified["closed"] = True
+            events.append(("closed", f"⚪ {lbl} — pas de cassure avant 17h30, ordre annulé. Pas de trade aujourd'hui."))
         flags["closed"] = True
 
     if entered and not notified["entered"]:
-        events.append(f"🎯 Entrée déclenchée — {lbl} {T['sens']} à {r(entry)}\n🛡️ SL: {r(sl)}   🏁 TP: {r(tp)}")
-        notified["entered"] = True
+        events.append(("entered", f"🎯 Entrée déclenchée — {lbl} {T['sens']} à {r(entry)}\n🛡️ SL: {r(sl)}   🏁 TP: {r(tp)}"))
 
     if be and not notified["be"]:
-        events.append(f"🟢 BE atteint (2R) — {lbl}\nDéplace ton SL à l'entrée ({r(entry)}). Trade sécurisé ✅")
-        notified["be"] = True
+        events.append(("be", f"🟢 BE atteint (2R) — {lbl}\nDéplace ton SL à l'entrée ({r(entry)}). Trade sécurisé ✅"))
 
     if closed and not notified["closed"]:
         if reason == "TP":
-            events.append(f"🏁 TP ATTEINT — {lbl} ! +{T['tp_r']:g}R 🎉")
+            msg = f"🏁 TP ATTEINT — {lbl} ! +{T['tp_r']:g}R 🎉"
         elif reason == "SL":
             if be:
-                events.append(f"🛡️ Sortie au break-even — {lbl}. Trade clôturé à l'entrée (0R).")
+                msg = f"🛡️ Sortie au break-even — {lbl}. Trade clôturé à l'entrée (0R)."
             else:
-                events.append(f"🛡️ SL touché — {lbl}. Trade clôturé (−1R).")
+                msg = f"🛡️ SL touché — {lbl}. Trade clôturé (−1R)."
         else:
-            events.append(f"⏰ Clôture 21h — {lbl}. Pense à solder ta position.")
-        notified["closed"] = True
+            msg = f"⏰ Clôture 21h — {lbl}. Pense à solder ta position."
+        events.append(("closed", msg))
 
     # journal automatique : une ligne des qu'un vrai trade (entree declenchee) se termine
     if closed and entered and not flags.get("journaled", False):
@@ -158,17 +159,25 @@ def main():
         journal_append(T, result_R, reason)
         flags["journaled"] = True
 
-    flags.update(entered=entered, be=be, closed=closed or flags["closed"],
-                 reason=reason, journaled=flags.get("journaled", False))
-    T["flags"] = flags; T["notified"] = notified
-    with open(TRADE_FILE, "w") as f:
-        json.dump(T, f)
-
-    for msg in events:
-        print(msg)
-        send_telegram(msg)
-    if not events:
-        print("Aucune nouvelle etape.")
+    # ENVOI D'ABORD, marquage ENSUITE : une notif n'est consideree delivree que
+    # si Telegram l'a acceptee. Sinon elle reste "a envoyer" et sera rejouee au
+    # prochain cycle (~10 min) — une alerte ne peut plus se perdre en silence.
+    try:
+        for key, msg in events:
+            print(msg)
+            if send_telegram(msg):
+                notified[key] = True
+            else:
+                print(f"!! notif '{key}' NON delivree — nouvel essai au prochain cycle")
+        if not events:
+            print("Aucune nouvelle etape.")
+    finally:
+        # l'etat est sauvegarde quoi qu'il arrive (evite de rejouer le journal)
+        flags.update(entered=entered, be=be, closed=closed or flags["closed"],
+                     reason=reason, journaled=flags.get("journaled", False))
+        T["flags"] = flags; T["notified"] = notified
+        with open(TRADE_FILE, "w") as f:
+            json.dump(T, f)
 
 
 if __name__ == "__main__":
