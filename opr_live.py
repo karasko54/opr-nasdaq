@@ -85,13 +85,50 @@ def fmt_setup(sens, entry, sl, tp):
 
 
 # ───────────────────────── Donnees ─────────────────────────
-def load_live():
-    """Recupere le 5m des derniers jours via yfinance et le passe en heure NY."""
+class DataUnavailable(RuntimeError):
+    """Donnees de marche temporairement indisponibles.
+
+    Cas typique : Yahoo rate-limite les IP du cloud GitHub
+    (YFRateLimitError: Too Many Requests) ou renvoie une reponse vide.
+    Exception dediee pour que l'appelant distingue une panne EXTERNE
+    passagere d'un vrai bug (qui, lui, doit remonter).
+    """
+
+
+# Erreurs qui trahissent un BUG du code, jamais une panne reseau : on les
+# laisse remonter telles quelles pour ne pas masquer une regression derriere
+# un "donnees indisponibles" silencieux.
+_CODE_BUGS = (AttributeError, TypeError, NameError, ImportError, SyntaxError)
+
+
+def load_live(retries=3, base_delay=15):
+    """Recupere le 5m des derniers jours via yfinance et le passe en heure NY.
+
+    Reessaie avec des pauses croissantes avant d'abandonner : absorbe les
+    rate-limits passagers de Yahoo au lieu de planter au premier refus.
+    """
     import yfinance as yf
-    d = yf.download(SYMBOL, period="7d", interval="5m",
-                    progress=False, auto_adjust=False)
+    d, last_err = None, None
+    for attempt in range(1, retries + 1):
+        try:
+            d = yf.download(SYMBOL, period="7d", interval="5m",
+                            progress=False, auto_adjust=False)
+            if d is not None and len(d) > 0:
+                break
+            last_err = "reponse vide"
+        except _CODE_BUGS:
+            raise            # vrai bug : doit crasher et declencher l'alerte
+        except Exception as e:
+            last_err = e     # panne externe (rate-limit, reseau) : on reessaie
+        d = None
+        if attempt < retries:
+            delay = base_delay * attempt
+            print(f"Donnees {SYMBOL} indisponibles ({last_err}) — "
+                  f"nouvelle tentative dans {delay}s ({attempt}/{retries - 1})...")
+            time.sleep(delay)
     if d is None or len(d) == 0:
-        raise RuntimeError(f"Aucune donnee pour {SYMBOL}")
+        raise DataUnavailable(
+            f"Aucune donnee pour {SYMBOL} apres {retries} tentatives ({last_err})")
     # aplati les colonnes multi-index eventuelles
     if isinstance(d.columns, pd.MultiIndex):
         d.columns = d.columns.get_level_values(0)

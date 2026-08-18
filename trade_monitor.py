@@ -19,7 +19,7 @@ import datetime as dt
 import pandas as pd
 
 from backtest_opr import NY_TZ, OPEN_END, ENTRY_END, FORCE_CLOSE
-from opr_live import send_telegram, load_live
+from opr_live import send_telegram, load_live, DataUnavailable
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -82,7 +82,15 @@ def main():
     ts_entry_end = pd.Timestamp(f"{today} {ENTRY_END}", tz=NY_TZ)
     ts_close = pd.Timestamp(f"{today} {FORCE_CLOSE}", tz=NY_TZ)
 
-    m5all = load_live()
+    try:
+        m5all = load_live()
+    except DataUnavailable as e:
+        # Panne externe passagere (Yahoo en rate-limit) : on saute ce cycle
+        # SANS crasher, donc sans declencher de fausse alerte Telegram.
+        # Le monitor rejoue tout le trade depuis le debut au prochain passage
+        # (~10 min) : aucune etape n'est perdue.
+        print(f"Donnees indisponibles — cycle ignore ({e})")
+        return
     day5 = m5all[m5all.index.normalize().date == today]
     bars = day5[(day5.index >= ts_dec) & (day5.index <= ts_close)]
 
