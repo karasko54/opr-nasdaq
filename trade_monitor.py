@@ -41,8 +41,18 @@ def r(x):
 #           (ex: beaucoup de trades a 3.0R alors que le TP est a 3.5R)
 #   mae_R = pire creux traverse (negatif)   -> dit si le SL est trop serre
 #           (ex: des gagnants qui frolent -0.9R avant de partir)
+#
+# r_22h / mfe_apres_R / mae_apres_R = ce qui s'est passe APRES la cloture
+# forcee de 21h, jusqu'a la cloture cash (22h Paris). Renseignes uniquement
+# pour les trades soldes d'office (sortie CLOSE) : ils disent si cette
+# cloture a coute des TP ou protege de retours au SL.
 FIELDS = ["date", "actif", "sens", "entree", "sl", "tp", "range",
-          "resultat_R", "mfe_R", "mae_R", "sortie", "contexte", "plan_respecte"]
+          "resultat_R", "mfe_R", "mae_R",
+          "r_22h", "mfe_apres_R", "mae_apres_R",
+          "sortie", "contexte", "plan_respecte"]
+
+# Cloture du cash US = 16:00 NY (~22h Paris) : derniere cotation de l'indice.
+CASH_CLOSE = "16:00"
 
 
 def ensure_columns(path, fields):
@@ -65,6 +75,29 @@ def ensure_columns(path, fields):
         for old in rows:
             w.writerow({k: old.get(k, "") for k in fields + extras})
     print(f"Journal: migre vers le nouveau format ({len(rows)} lignes conservees)")
+
+
+def journal_update(date, actif, **valeurs):
+    """Complete une ligne deja ecrite (identifiee par date + actif)."""
+    if not os.path.exists(JOURNAL_FILE) or os.path.getsize(JOURNAL_FILE) == 0:
+        return False
+    ensure_columns(JOURNAL_FILE, FIELDS)
+    with open(JOURNAL_FILE, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return False
+    touche = False
+    for row in rows:
+        if row.get("date") == date and row.get("actif") == actif:
+            row.update({k: v for k, v in valeurs.items() if k in row})
+            touche = True
+    if not touche:
+        return False
+    with open(JOURNAL_FILE, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    return True
 
 
 def journal_append(T, result_R, reason, mfe=None, mae=None):
@@ -91,6 +124,54 @@ def journal_append(T, result_R, reason, mfe=None, mae=None):
     print(f"Journal: ligne ajoutee ({T['date']} {reason} {result_R:+.2f}R{extra})")
 
 
+def capture_post_close(T):
+    """Mesure ce qu'aurait donne le trade s'il avait couru jusqu'a 22h.
+
+    Ne concerne que les trades soldes d'office a 21h (sortie CLOSE) : entre
+    la cloture forcee (15:00 NY) et la cloture cash (16:00 NY) on releve le
+    resultat final et les extremes atteints. C'est la donnee qui permet de
+    dire, chiffres en main, si la cloture 21h coute des TP ou protege.
+    """
+    flags = T["flags"]
+    if flags.get("post_close"):
+        return
+    if flags.get("reason") != "CLOSE":
+        flags["post_close"] = True          # sorti au TP/SL : rien a mesurer
+        return
+
+    today = dt.date.fromisoformat(T["date"])
+    ts_close = pd.Timestamp(f"{today} {FORCE_CLOSE}", tz=NY_TZ)
+    ts_cash = pd.Timestamp(f"{today} {CASH_CLOSE}", tz=NY_TZ)
+    if pd.Timestamp.now(tz=NY_TZ) < ts_cash:
+        return                               # trop tot, on repassera
+
+    try:
+        m5all = load_live()
+    except DataUnavailable as e:
+        print(f"Donnees indisponibles — mesure post-cloture reportee ({e})")
+        return
+
+    w = m5all[(m5all.index > ts_close) & (m5all.index <= ts_cash)]
+    if len(w) == 0:
+        print("Aucune bougie entre 21h et 22h — mesure post-cloture abandonnee")
+        flags["post_close"] = True
+        return
+
+    side, entry, risk = T["side"], T["entry"], T["risk"]
+    r22 = (float(w["close"].iloc[-1]) - entry) / risk * side
+    if side == 1:
+        mfe = (float(w["high"].max()) - entry) / risk
+        mae = (float(w["low"].min()) - entry) / risk
+    else:
+        mfe = (entry - float(w["low"].min())) / risk
+        mae = (entry - float(w["high"].max())) / risk
+
+    journal_update(T["date"], T["label"], r_22h=round(r22, 2),
+                   mfe_apres_R=round(mfe, 2), mae_apres_R=round(mae, 2))
+    flags["post_close"] = True
+    print(f"Post-cloture 22h : R={r22:+.2f}  MFE={mfe:+.2f}  MAE={mae:+.2f}")
+
+
 def main():
     if not os.path.exists(TRADE_FILE):
         print("Aucun trade enregistre — rien a surveiller.")
@@ -103,7 +184,12 @@ def main():
     # On ne s'arrete que si le trade est termine ET que la notif de cloture est
     # bien partie : sinon on repasse pour rejouer l'envoi rate.
     if T["flags"]["closed"] and T["notified"].get("closed"):
-        print("Trade deja termine et notifie — rien a surveiller.")
+        if T["flags"].get("post_close"):
+            print("Trade termine, notifie et mesure — rien a surveiller.")
+            return
+        capture_post_close(T)       # il reste la mesure 21h -> 22h a relever
+        with open(TRADE_FILE, "w") as f:
+            json.dump(T, f)
         return
 
     today = dt.date.fromisoformat(T["date"])
