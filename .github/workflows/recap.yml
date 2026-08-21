@@ -1,23 +1,30 @@
-name: Suivi trade OPR -> Telegram
+name: Recap mensuel -> Telegram
 
-# Surveille le trade du jour (BE / TP / SL) toutes les 10 min pendant la seance.
-# 13:00-21:59 UTC couvre 15h45-22h Paris (ete comme hiver). L'heure
-# supplementaire sert au releve post-cloture : la cloture cash US (16:00 NY,
-# ~22h Paris) tombe a 21:00 UTC en hiver, hors de l'ancienne plage 13-20.
+# Bilan du mois envoye le DERNIER DIMANCHE, une seule fois (fichier d'etat).
+# Plusieurs reveils le dimanche : les crons GitHub partent souvent avec
+# plusieurs heures de retard, et un depart repousse apres minuit ferait
+# sauter le recap du mois. Le script rattrape aussi le lundi si besoin.
 on:
   schedule:
-    - cron: "*/10 13-21 * * 1-5"
+    - cron: "20 8 * * 0"
+    - cron: "20 12 * * 0"
+    - cron: "20 16 * * 0"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Envoyer le recap maintenant (hors dernier dimanche)"
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: write           # pour memoriser le recap deja envoye
 
 concurrency:
-  group: opr-state
+  group: opr-state          # meme verrou que opr.yml / monitor.yml
   cancel-in-progress: false
 
 jobs:
-  monitor:
+  recap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,41 +32,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
       - name: Installer les dependances
-        run: pip install -r requirements.txt
+        run: pip install requests
 
-      - name: Surveiller le trade (NASDAQ)
+      - name: Envoyer le recap mensuel
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          OPR_SYMBOL: "^NDX"
-          OPR_ASSET: "nas"
-          OPR_LABEL: "NAS100"
-        run: python trade_monitor.py
+          RECAP_FORCE: ${{ (github.event_name == 'workflow_dispatch' && inputs.force) && '1' || '' }}
+        run: python recap.py
 
-      - name: Surveiller le trade (BTC)
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          OPR_SYMBOL: "BTC-USD"
-          OPR_ASSET: "btc"
-          OPR_LABEL: "BTC"
-          OPR_TRADE: "trade_today_btc.json"
-        run: python trade_monitor.py
-
-      - name: Memoriser l'avancement du trade
+      - name: Memoriser le recap envoye
         if: always()
         run: |
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
-          git add trade_today.json .opr_state journal.csv trade_today_btc.json .opr_state_btc 2>/dev/null || true
+          git add .recap_state 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "rien a committer"; exit 0
           fi
-          git commit -m "etat: avancement trade + journal (NASDAQ + BTC)"
-          # push robuste : re-synchronise et reessaie pour ne jamais perdre le journal
+          git commit -m "etat: recap mensuel envoye"
           for i in 1 2 3 4 5; do
             if git pull --rebase --autostash origin master && git push; then
               echo "push OK (tentative $i)"; exit 0
