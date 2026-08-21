@@ -409,6 +409,8 @@
           </div>
           <p class="mode-tip" id="modeTip"></p>
           <button type="button" class="btn btn-ghost" id="frameBtn" hidden>📷 Vérifier mon cadrage</button>
+          <p class="mode-tip" id="camHelp" hidden></p>
+          <button type="button" class="btn btn-primary" id="popOut" hidden>Ouvrir dans un onglet séparé</button>
           <div id="framing" hidden>
             <div class="frame-stage">
               <video id="camPreview" playsinline muted autoplay></video>
@@ -912,6 +914,61 @@
     camStart();
   }
 
+  /* ---------- Why exactly did the camera refuse? ----------
+     Collapsing every cause into "check your permissions" is useless: the most
+     common one here isn't the user at all. A page embedded in an iframe only
+     gets the camera if the embedding page delegates it (allow="camera"), and
+     when it doesn't the browser rejects outright without ever prompting. That
+     needs different advice from a permission the user actually denied. */
+  const inFrame = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
+
+  function camDiagnose(err){
+    const name = err && err.name || "";
+    if(!window.isSecureContext) return {
+      short:"connexion non sécurisée",
+      help:"Les navigateurs n'autorisent la caméra qu'en https:// ou sur un fichier local. Ouvre l'application autrement.",
+      pop:false
+    };
+    if(name==="NotFoundError" || name==="DevicesNotFoundError" || name==="OverconstrainedError") return {
+      short:"aucune caméra trouvée",
+      help:"Cet appareil ne présente aucune caméra utilisable. Passe en comptage manuel ou capteur.",
+      pop:false
+    };
+    if(name==="NotReadableError" || name==="TrackStartError") return {
+      short:"caméra déjà utilisée",
+      help:"Une autre application utilise déjà la caméra. Ferme-la, puis réessaie.",
+      pop:false
+    };
+    if(name==="NotAllowedError" || name==="SecurityError"){
+      if(inFrame) return {
+        short:"la caméra est bloquée dans ce cadre",
+        help:"Cette page est affichée à l'intérieur d'un cadre qui ne transmet pas l'accès caméra — le navigateur refuse sans même te poser la question. Ouvre l'application dans un onglet séparé : la caméra pourra alors te demander l'autorisation.",
+        pop:true
+      };
+      return {
+        short:"autorisation refusée",
+        help:"Tu as refusé l'accès à la caméra, ou le navigateur l'a bloqué. Touche l'icône de cadenas (ou de caméra) dans la barre d'adresse et réautorise la caméra pour ce site, puis réessaie.",
+        pop:false
+      };
+    }
+    return {
+      short:"caméra indisponible",
+      help:"Impossible d'ouvrir la caméra sur cet appareil. Tu peux compter à la main ou utiliser le capteur de mouvement.",
+      pop:false
+    };
+  }
+
+  function camShowHelp(d){
+    $("camHelp").textContent = d.help;
+    $("camHelp").hidden = false;
+    $("popOut").hidden = !d.pop;
+  }
+  function camHideHelp(){
+    $("camHelp").hidden = true;
+    $("popOut").hidden = true;
+  }
+  $("popOut").addEventListener("click",()=>{ window.open(location.href,"_blank","noopener"); });
+
   /* ---------- Framing preview, on the setup screen ----------
      Lets you place the phone and grant camera access the evening before, so the
      alarm can open the camera by itself in the morning. */
@@ -927,7 +984,9 @@
         video:{ facingMode:cam.facing }, audio:false
       });
     }catch(e){
-      $("frameBtn").textContent = "Caméra refusée — vérifie les autorisations";
+      const d = camDiagnose(e);
+      $("frameBtn").textContent = "⚠️ " + d.short + " — réessayer";
+      camShowHelp(d);
       return;
     }
     const v = $("camPreview");
@@ -938,6 +997,7 @@
       + " — tu dois te voir en entier";
     $("framing").hidden = false;
     $("frameBtn").hidden = true;
+    camHideHelp();
   }
 
   function framingStop(){
@@ -974,9 +1034,7 @@
         audio:false
       });
     }catch(err){
-      camFail(err && err.name==="NotAllowedError"
-        ? "accès à la caméra refusé"
-        : "caméra indisponible");
+      camFail(camDiagnose(err));
       return;
     }
     const v = $("camVideo");
@@ -991,13 +1049,13 @@
     cam.raf = requestAnimationFrame(camLoop);
   }
 
-  function camFail(msg){
-    camSay(msg, "bad");
+  function camFail(d){
+    camSay(d.short, "bad");
     $("camStage").hidden = true;
     $("camEnable").hidden = false;
     $("camEnable").textContent = "Réessayer la caméra";
     $("camFallback").hidden = false;
-    $("camTip").textContent = "Tu peux aussi compter à la main — l'alarme continue tant que l'objectif n'est pas atteint.";
+    $("camTip").textContent = d.help + " L'alarme continue tant que l'objectif n'est pas atteint.";
   }
 
   function camResetSignal(){
