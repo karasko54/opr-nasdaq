@@ -205,6 +205,13 @@
     font-family:var(--f-mono);font-size:10.5px;letter-spacing:.05em;
     background:rgba(0,0,0,.6);color:#fff;padding:6px 10px;border-radius:999px;
   }
+  a.btn{display:block;text-align:center;text-decoration:none}
+  .pop-box{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .pop-url{
+    font-family:var(--f-mono);font-size:10.5px;color:var(--muted);word-break:break-all;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    padding:9px 11px;margin:0;user-select:all;-webkit-user-select:all;line-height:1.5;
+  }
   .frame-actions{display:flex;gap:8px;margin-top:9px}
   .frame-actions .btn{margin:0}
 
@@ -410,7 +417,11 @@
           <p class="mode-tip" id="modeTip"></p>
           <button type="button" class="btn btn-ghost" id="frameBtn" hidden>📷 Vérifier mon cadrage</button>
           <p class="mode-tip" id="camHelp" hidden></p>
-          <button type="button" class="btn btn-primary" id="popOut" hidden>Ouvrir dans un onglet séparé</button>
+          <div class="pop-box" id="popBox" hidden>
+            <a class="btn btn-primary" id="popLink" target="_blank" rel="noopener">Ouvrir dans un onglet séparé</a>
+            <button type="button" class="btn btn-ghost" id="copyLink">Copier le lien de l'app</button>
+            <p class="pop-url" id="popUrl"></p>
+          </div>
           <div id="framing" hidden>
             <div class="frame-stage">
               <video id="camPreview" playsinline muted autoplay></video>
@@ -922,6 +933,17 @@
      needs different advice from a permission the user actually denied. */
   const inFrame = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
 
+  // true = the embedding policy withholds the camera, false = it allows it,
+  // null = this browser won't say. Lets us tell "the frame blocks it" apart
+  // from "you tapped Refuse", which need opposite advice.
+  function cameraPolicyBlocked(){
+    try{
+      const fp = document.featurePolicy || document.permissionsPolicy;
+      if(fp && typeof fp.allowsFeature === "function") return !fp.allowsFeature("camera");
+    }catch(e){}
+    return null;
+  }
+
   function camDiagnose(err){
     const name = err && err.name || "";
     if(!window.isSecureContext) return {
@@ -940,14 +962,22 @@
       pop:false
     };
     if(name==="NotAllowedError" || name==="SecurityError"){
-      if(inFrame) return {
+      const blocked = cameraPolicyBlocked();
+      if(blocked === true) return {
         short:"la caméra est bloquée dans ce cadre",
-        help:"Cette page est affichée à l'intérieur d'un cadre qui ne transmet pas l'accès caméra — le navigateur refuse sans même te poser la question. Ouvre l'application dans un onglet séparé : la caméra pourra alors te demander l'autorisation.",
+        help:"Cette page est affichée à l'intérieur d'un cadre qui ne transmet pas l'accès caméra — le navigateur refuse sans jamais te poser la question, il n'y a donc rien à corriger dans tes réglages. Ouvre l'application dans un onglet séparé avec le bouton ci-dessous (ou copie le lien et colle-le dans un nouvel onglet) : la caméra pourra alors demander ton autorisation.",
+        pop:true
+      };
+      // The probe isn't available everywhere and can disagree with what actually
+      // happened, so never withhold the way out while we're inside a frame.
+      if(inFrame) return {
+        short:"accès à la caméra refusé",
+        help:"Soit l'accès a été refusé pour ce site, soit le cadre qui affiche cette page ne transmet pas la caméra. Réautorise-la via l'icône de cadenas dans la barre d'adresse ; si rien ne change, ouvre l'application dans un onglet séparé ci-dessous.",
         pop:true
       };
       return {
         short:"autorisation refusée",
-        help:"Tu as refusé l'accès à la caméra, ou le navigateur l'a bloqué. Touche l'icône de cadenas (ou de caméra) dans la barre d'adresse et réautorise la caméra pour ce site, puis réessaie.",
+        help:"L'accès à la caméra a été refusé pour ce site. Touche l'icône de cadenas (ou de caméra) dans la barre d'adresse, réautorise la caméra, puis réessaie.",
         pop:false
       };
     }
@@ -961,13 +991,28 @@
   function camShowHelp(d){
     $("camHelp").textContent = d.help;
     $("camHelp").hidden = false;
-    $("popOut").hidden = !d.pop;
+    if(d.pop){
+      // A sandboxed frame can veto window.open, so offer a real link (which can
+      // also be long-pressed) and the raw URL to paste by hand.
+      $("popLink").href = location.href;
+      $("popUrl").textContent = location.href;
+      $("popBox").hidden = false;
+    }else $("popBox").hidden = true;
   }
   function camHideHelp(){
     $("camHelp").hidden = true;
-    $("popOut").hidden = true;
+    $("popBox").hidden = true;
   }
-  $("popOut").addEventListener("click",()=>{ window.open(location.href,"_blank","noopener"); });
+  $("copyLink").addEventListener("click", async ()=>{
+    const btn = $("copyLink");
+    try{
+      await navigator.clipboard.writeText(location.href);
+      btn.textContent = "Lien copié ✓";
+    }catch(e){
+      btn.textContent = "Copie impossible — sélectionne le lien ci-dessous";
+    }
+    setTimeout(()=>{ btn.textContent = "Copier le lien de l'app"; }, 2500);
+  });
 
   /* ---------- Framing preview, on the setup screen ----------
      Lets you place the phone and grant camera access the evening before, so the
