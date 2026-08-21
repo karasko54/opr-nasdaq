@@ -185,10 +185,16 @@
   .seg{display:flex;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:5px}
   .seg button{
     flex:1;border:0;background:transparent;color:var(--muted);cursor:pointer;
-    border-radius:10px;padding:10px 8px;font-weight:600;font-size:13.5px;transition:.14s;
+    border-radius:10px;padding:10px 4px;font-weight:600;font-size:13px;transition:.14s;
   }
-  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 0 var(--border)}
-  .seg button .x{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.1em;display:block;opacity:.7;text-transform:uppercase;margin-top:2px}
+  .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--text);box-shadow:inset 0 0 0 1px var(--accent)}
+  .seg button .x{font-family:var(--f-mono);font-size:9px;letter-spacing:.06em;display:block;opacity:.7;text-transform:uppercase;margin-top:3px}
+  .seg button[aria-pressed="true"] .x{color:var(--accent);opacity:1}
+  .mode-tip{
+    font-size:12.5px;color:var(--muted);line-height:1.5;margin:0;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;
+  }
+  .mode-tip b{color:var(--text);font-weight:600}
 
   .btn{
     border:0;border-radius:15px;padding:16px;font-weight:700;font-size:16px;cursor:pointer;
@@ -277,6 +283,46 @@
   .motion-cap{display:flex;justify-content:space-between;font-family:var(--f-mono);font-size:11px;color:#F6C79A;margin-top:8px;letter-spacing:.04em}
   .motion-enable{margin-top:14px}
 
+  /* camera mode */
+  .cam-box{width:100%;max-width:360px;margin:2px auto 0;display:flex;flex-direction:column;gap:10px}
+  .cam-stage{
+    position:relative;border-radius:16px;overflow:hidden;background:#000;
+    border:1px solid rgba(255,255,255,.16);aspect-ratio:4/3;
+  }
+  .cam-stage video{width:100%;height:100%;object-fit:cover;display:block}
+  .cam-badge{
+    position:absolute;left:10px;bottom:10px;right:10px;
+    font-family:var(--f-mono);font-size:11px;letter-spacing:.04em;
+    background:rgba(22,13,6,.74);color:#FFF4E9;padding:7px 11px;border-radius:999px;
+    text-align:center;
+  }
+  .cam-badge.good{color:#7CE0A8}
+  .cam-badge.bad{color:#FF9A93}
+  .cam-meter{height:10px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;position:relative}
+  .cam-meter i{display:block;height:100%;width:0;background:#FF8A2B;transition:width .1s linear}
+  .cam-meter::after{
+    content:"";position:absolute;top:-3px;bottom:-3px;left:55%;width:2px;
+    background:rgba(255,244,233,.5);border-radius:2px;
+  }
+  .cam-cap{font-family:var(--f-mono);font-size:11px;color:#F6C79A;letter-spacing:.03em;line-height:1.55;text-align:left}
+  .cam-actions{display:flex;gap:8px}
+  .cam-mini{
+    flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+    color:#FFF4E9;border-radius:11px;padding:11px 8px;font-size:12.5px;cursor:pointer;
+    font-family:var(--f-ui);transition:background .14s;
+  }
+  .cam-mini:hover{background:rgba(255,255,255,.14)}
+  .cam-privacy{font-size:11px;color:rgba(255,244,233,.52);margin:0;line-height:1.5;text-align:left}
+
+  /* compact ringing layout when the camera stage is on screen */
+  .ring-screen.cam .ring-body{justify-content:flex-start;padding-top:4px;gap:4px;overflow-y:auto}
+  .ring-screen.cam .ring-title{font-size:clamp(26px,8vw,36px)}
+  .ring-screen.cam .ring-ex{font-size:13.5px;margin:2px 0 6px}
+  .ring-screen.cam .dial{width:min(40vw,150px)}
+  .ring-screen.cam .dial .track,.ring-screen.cam .dial .prog{stroke-width:16}
+  .ring-screen.cam .dial .count .dcount{font-size:clamp(34px,11vw,46px)}
+  .ring-screen.cam .dial .count .of{font-size:12px}
+
   .ring-foot{display:flex;justify-content:center;padding-top:14px}
   .ring-cheat{background:none;border:0;color:rgba(255,244,233,.45);font-size:12px;cursor:pointer;font-family:var(--f-mono);letter-spacing:.05em;text-decoration:underline;text-underline-offset:3px}
 
@@ -343,11 +389,13 @@
         </div>
 
         <div class="field">
-          <div class="label">Comptage</div>
+          <div class="label">Vérification</div>
           <div class="seg" id="modeSeg">
             <button type="button" data-mode="manual" aria-pressed="true">Manuel<span class="x">appui</span></button>
-            <button type="button" data-mode="motion" aria-pressed="false">Mouvement<span class="x">capteur · exp.</span></button>
+            <button type="button" data-mode="motion" aria-pressed="false">Capteur<span class="x">accéléro.</span></button>
+            <button type="button" data-mode="camera" aria-pressed="false">Caméra<span class="x">vision</span></button>
           </div>
+          <p class="mode-tip" id="modeTip"></p>
         </div>
 
         <button class="btn btn-primary" id="armBtn">Activer l'alarme</button>
@@ -409,6 +457,22 @@
       <div class="motion-cap"><span>Intensité du mouvement</span><span id="motionState">en attente…</span></div>
       <button class="btn btn-primary motion-enable" id="motionEnable">Autoriser le capteur de mouvement</button>
     </div>
+
+    <!-- camera -->
+    <div id="camUI" class="cam-box" hidden>
+      <div class="cam-stage" id="camStage" hidden>
+        <video id="camVideo" playsinline muted autoplay></video>
+        <div class="cam-badge" id="camState">démarrage…</div>
+      </div>
+      <div class="cam-meter" id="camMeterWrap" hidden><i id="camBar"></i></div>
+      <p class="cam-cap" id="camTip"></p>
+      <button class="btn btn-primary" id="camEnable">Activer la caméra</button>
+      <div class="cam-actions">
+        <button class="cam-mini" id="camSwitch" hidden>↺ Autre caméra</button>
+        <button class="cam-mini" id="camFallback" hidden>Compter à la main</button>
+      </div>
+      <p class="cam-privacy">🔒 L'image est analysée uniquement sur ton appareil. Rien n'est enregistré ni envoyé.</p>
+    </div>
   </div>
 
   <div class="ring-foot">
@@ -434,12 +498,24 @@
 
   /* ---------- Exercise catalogue ---------- */
   const EXERCISES = {
-    pompes:      {label:"Pompes",        unit:"répétitions", minGap:1100, mag:15},
-    squats:      {label:"Squats",        unit:"répétitions", minGap:900,  mag:14},
-    jumpingjacks:{label:"Jumping jacks",  unit:"répétitions", minGap:420,  mag:16, short:"J. jacks"},
-    fentes:      {label:"Fentes",        unit:"répétitions", minGap:950,  mag:13},
-    abdos:       {label:"Abdos",         unit:"répétitions", minGap:900,  mag:12},
-    burpees:     {label:"Burpees",       unit:"répétitions", minGap:2400, mag:18}
+    pompes:      {label:"Pompes",        unit:"répétitions", minGap:1100, mag:15,
+                  cam:"Pose le téléphone au sol, écran vers toi, à ~50 cm de tes épaules."},
+    squats:      {label:"Squats",        unit:"répétitions", minGap:900,  mag:14,
+                  cam:"Cale le téléphone contre un mur ou un meuble, à 2 m, pour te voir en entier."},
+    jumpingjacks:{label:"Jumping jacks",  unit:"répétitions", minGap:420,  mag:16, short:"J. jacks",
+                  cam:"Pose le téléphone à 2-3 m, en hauteur, pour voir tout ton corps."},
+    fentes:      {label:"Fentes",        unit:"répétitions", minGap:950,  mag:13,
+                  cam:"Téléphone posé à 2 m, de côté, à hauteur de genou."},
+    abdos:       {label:"Abdos",         unit:"répétitions", minGap:900,  mag:12,
+                  cam:"Téléphone posé au sol sur le côté, à ~1 m de ton buste."},
+    burpees:     {label:"Burpees",       unit:"répétitions", minGap:2400, mag:18,
+                  cam:"Téléphone à 2-3 m, en hauteur, pour voir le mouvement complet."}
+  };
+
+  const MODE_TIPS = {
+    manual: "Tu valides chaque répétition en tapant un gros bouton. Une cadence minimale réaliste est imposée : marteler l'écran ne compte pas.",
+    motion: "L'accéléromètre du téléphone compte les répétitions. Garde le téléphone sur toi (poche, main). Mobile uniquement.",
+    camera: "La caméra vérifie visuellement que tu fais bien le mouvement, en analysant l'amplitude et le rythme de ton corps. Tout est analysé sur ton appareil."
   };
 
   /* ---------- State ---------- */
@@ -455,6 +531,7 @@
   let count = 0;
   let lastRepAt = 0;
   let wakeLock = null;
+  let activeMode = "manual";     // counting mode for the alarm currently ringing
 
   /* ---------- Elements ---------- */
   const $ = id => document.getElementById(id);
@@ -515,6 +592,7 @@
   });
   function renderMode(){
     modeSeg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===cfg.mode ? "true":"false"));
+    $("modeTip").textContent = MODE_TIPS[cfg.mode] || MODE_TIPS.manual;
   }
 
   /* ---------- Alarm time ---------- */
@@ -638,17 +716,25 @@
   function ring(){
     if(armTick){ clearInterval(armTick); armTick=null; }
     count = 0; lastRepAt = 0;
+    activeMode = cfg.mode;
     const ex = EXERCISES[cfg.exercise];
     $("ringEx").innerHTML = "Fais <b>"+cfg.reps+" "+ex.label.toLowerCase()+"</b> pour couper l'alarme";
     $("ofCount").textContent = "/ "+cfg.reps;
     renderProgress();
-    // choose UI
-    $("manualUI").hidden = (cfg.mode!=="manual");
-    $("motionUI").hidden = (cfg.mode!=="motion");
+    applyRingUI();
     show("ringing");
     startAlarmSound();
     requestWake();
-    if(cfg.mode==="motion") setupMotion();
+    if(activeMode==="motion") setupMotion();
+    if(activeMode==="camera") setupCamera();
+  }
+
+  // Swap the counting UI to whatever mode is active right now.
+  function applyRingUI(){
+    $("manualUI").hidden = (activeMode!=="manual");
+    $("motionUI").hidden = (activeMode!=="motion");
+    $("camUI").hidden    = (activeMode!=="camera");
+    screens.ringing.classList.toggle("cam", activeMode==="camera");
   }
 
   function renderProgress(){
@@ -657,20 +743,23 @@
     $("progCircle").style.strokeDashoffset = C*(1-p);
   }
 
-  function addRep(fromMotion){
+  // auto === true when a sensor validated the rep (it does its own cadence gating)
+  function addRep(auto){
     const ex = EXERCISES[cfg.exercise];
     const now = performance.now();
-    if(!fromMotion && now-lastRepAt < ex.minGap){
+    if(!auto && now-lastRepAt < ex.minGap){
       flashHint();
       return;
     }
     lastRepAt = now;
     count++;
     renderProgress();
-    // little tick sound for feedback
+    // little tick sound so it works even when you can't see the screen
     if(actx){ beep(actx.currentTime+0.01, 1320, 0.05, 0.14); }
-    const tap = $("tapBtn");
-    tap.classList.remove("flash"); void tap.offsetWidth; tap.classList.add("flash");
+    if(activeMode==="manual"){
+      const tap = $("tapBtn");
+      tap.classList.remove("flash"); void tap.offsetWidth; tap.classList.add("flash");
+    }
     if(count>=cfg.reps) finish();
   }
 
@@ -739,11 +828,279 @@
     if(motionHandler){ window.removeEventListener("devicemotion",motionHandler); motionHandler=null; }
   }
 
+  /* ================= CAMERA REP DETECTION =================
+     No ML model is involved (none can be loaded offline). Instead the frame is
+     shrunk to 96x72 greyscale and compared against a slowly-adapting background
+     model, which isolates the moving body. Two 1-D signals are derived per frame:
+       cov — how much of the frame the body covers (grows as you come closer)
+       cen — the vertical centre of the body (drops as you go down)
+     Whichever signal is swinging harder drives a Schmitt trigger, so one full
+     down-and-up oscillation of sufficient amplitude counts as one rep. Amplitude
+     and per-exercise cadence both have to hold, which is what makes it a real
+     check rather than a button press. */
+  const CAMCFG = {
+    W:96, H:72,
+    FG_TH:24,          // greyscale delta that counts as "body", not sensor noise
+    FPS:20,
+    CALIB_MS:2600,     // build the reference scene before counting anything
+    SNAPS:9,           // frames kept during calibration for the median background
+    MIN_COV:0.040,     // required swing: 4% of the frame area…
+    MIN_CEN:0.045,     // …or 4.5% of frame height (body centre)…
+    MIN_STR:0.018,     // …or 1.8% of frame height (image structure)
+    BUF:160,           // ~8 s sliding window, enough for slow burpees
+    DARK:22,           // mean brightness below this = too dark to see anything
+    RESET_COV:0.60,    // this much foreground for RESET_HOLD frames = scene moved
+    RESET_HOLD:60
+  };
+
+  const cam = {
+    stream:null, raf:null, running:false, facing:"user",
+    canvas:null, ctx:null, bg:null, bgMean:0, snaps:[], nextSnapAt:0,
+    samples:[], phase:"off", zone:"low", feature:"cen",
+    lastRepAt:0, startedAt:0, lastFrameAt:0, darkRun:0, satRun:0
+  };
+
+  function camSay(txt, cls){
+    const el = $("camState");
+    el.textContent = txt;
+    el.className = "cam-badge" + (cls ? " "+cls : "");
+  }
+
+  function setupCamera(){
+    const ex = EXERCISES[cfg.exercise];
+    $("camTip").textContent = ex.cam;
+    $("camEnable").hidden = false;
+    $("camEnable").textContent = "Activer la caméra";
+    $("camStage").hidden = true;
+    $("camMeterWrap").hidden = true;
+    $("camSwitch").hidden = true;
+    $("camFallback").hidden = true;
+    $("camBar").style.width = "0%";
+  }
+
+  async function camStart(){
+    $("camEnable").hidden = true;
+    $("camStage").hidden = false;
+    camSay("ouverture de la caméra…");
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      camFail("caméra non supportée par ce navigateur");
+      return;
+    }
+    try{
+      cam.stream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:cam.facing, width:{ideal:640}, height:{ideal:480} },
+        audio:false
+      });
+    }catch(err){
+      camFail(err && err.name==="NotAllowedError"
+        ? "accès à la caméra refusé"
+        : "caméra indisponible");
+      return;
+    }
+    const v = $("camVideo");
+    v.srcObject = cam.stream;
+    v.style.transform = (cam.facing==="user") ? "scaleX(-1)" : "none";
+    try{ await v.play(); }catch(e){}
+    $("camMeterWrap").hidden = false;
+    $("camSwitch").hidden = false;
+    $("camFallback").hidden = false;
+    camResetSignal();
+    cam.running = true;
+    cam.raf = requestAnimationFrame(camLoop);
+  }
+
+  function camFail(msg){
+    camSay(msg, "bad");
+    $("camStage").hidden = true;
+    $("camEnable").hidden = false;
+    $("camEnable").textContent = "Réessayer la caméra";
+    $("camFallback").hidden = false;
+    $("camTip").textContent = "Tu peux aussi compter à la main — l'alarme continue tant que l'objectif n'est pas atteint.";
+  }
+
+  function camResetSignal(){
+    cam.bg = null; cam.samples.length = 0; cam.snaps.length = 0;
+    cam.zone = "low"; cam.phase = "calib";
+    cam.startedAt = performance.now();
+    cam.nextSnapAt = cam.startedAt;
+    cam.darkRun = 0; cam.satRun = 0;
+  }
+
+  function camLoop(ts){
+    if(!cam.running) return;
+    cam.raf = requestAnimationFrame(camLoop);
+    const now = ts || performance.now();
+    if(now - cam.lastFrameAt < 1000/CAMCFG.FPS) return;
+    cam.lastFrameAt = now;
+    try{ camFrame(now); }catch(e){ /* a dropped frame must never kill the alarm */ }
+  }
+
+  function pct(sorted, p){
+    if(!sorted.length) return 0;
+    const i = Math.round(p*(sorted.length-1));
+    return sorted[Math.max(0,Math.min(sorted.length-1,i))];
+  }
+
+  // Per-pixel median of the calibration snapshots. Using the median (not the
+  // mean) means a body already moving in shot doesn't smear into the reference:
+  // each pixel shows the real background for most of the window, so that wins.
+  function camBuildBackground(){
+    const n = CAMCFG.W*CAMCFG.H, snaps = cam.snaps, k = snaps.length;
+    const bg = new Float32Array(n), tmp = new Float32Array(k);
+    const mid = k>>1;
+    let sum = 0;
+    for(let i=0;i<n;i++){
+      for(let j=0;j<k;j++) tmp[j] = snaps[j][i];
+      tmp.sort();
+      bg[i] = tmp[mid];
+      sum += bg[i];
+    }
+    cam.bg = bg;
+    cam.bgMean = sum/n;
+    cam.snaps.length = 0;
+  }
+
+  function camFrame(now){
+    const v = $("camVideo");
+    if(!v.videoWidth) return;
+    const W = CAMCFG.W, H = CAMCFG.H, n = W*H;
+
+    if(!cam.canvas){
+      cam.canvas = document.createElement("canvas");
+      cam.canvas.width = W; cam.canvas.height = H;
+      cam.ctx = cam.canvas.getContext("2d",{willReadFrequently:true});
+    }
+    cam.ctx.drawImage(v,0,0,W,H);
+    const px = cam.ctx.getImageData(0,0,W,H).data;
+
+    const cur = new Float32Array(n);
+    let mean = 0;
+    for(let i=0,p=0;i<n;i++,p+=4){
+      const g = px[p]*0.299 + px[p+1]*0.587 + px[p+2]*0.114;
+      cur[i] = g; mean += g;
+    }
+    mean /= n;
+
+    // Too dark to see a body at all — say so instead of silently never counting.
+    if(mean < CAMCFG.DARK){
+      cam.darkRun++;
+      if(cam.darkRun > 25){
+        camSay("trop sombre — allume une lumière", "bad");
+        $("camBar").style.width = "0%";
+        return;
+      }
+    }else cam.darkRun = 0;
+
+    /* ----- calibration: collect snapshots, then freeze a median background ----- */
+    if(cam.phase==="calib"){
+      if(now >= cam.nextSnapAt && cam.snaps.length < CAMCFG.SNAPS){
+        cam.snaps.push(cur);
+        cam.nextSnapAt = now + CAMCFG.CALIB_MS/CAMCFG.SNAPS;
+      }
+      if(cam.snaps.length >= CAMCFG.SNAPS){
+        camBuildBackground();
+        cam.phase = "ready";
+        cam.samples.length = 0;
+        cam.zone = "low";
+      }
+      camSay("calibration… mets-toi en position");
+      return;
+    }
+
+    /* ----- signals ----- */
+    // Global exposure shift is removed so auto-brightness isn't read as motion.
+    const shift = mean - cam.bgMean;
+    let fg = 0, fgY = 0, strW = 0, strY = 0;
+    for(let i=0;i<n;i++){
+      const y = (i/W)|0;
+      const c = cur[i]-shift;
+      if(Math.abs(c - cam.bg[i]) > CAMCFG.FG_TH){ fg++; fgY += y; }
+      const w = Math.abs(cur[i]-mean);      // background-free image structure
+      strW += w; strY += w*y;
+    }
+    const cov = fg/n;                                  // how much body is in shot
+    const cen = fg>0 ? (fgY/fg)/H : 0.5;               // where the body sits
+    const str = strW>0 ? (strY/strW)/H : 0.5;          // works even filling frame
+
+    // Phone knocked over / scene replaced: the reference is meaningless now.
+    if(cov > CAMCFG.RESET_COV){
+      if(++cam.satRun > CAMCFG.RESET_HOLD){ camResetSignal(); return; }
+    }else cam.satRun = 0;
+
+    cam.samples.push({cov:cov, cen:cen, str:str});
+    if(cam.samples.length > CAMCFG.BUF) cam.samples.shift();
+
+    const swing = (key, min) => {
+      const a = cam.samples.map(o=>o[key]).sort((x,y)=>x-y);
+      const lo = pct(a,.15), r = pct(a,.85)-lo;
+      return {lo:lo, r:r, score:r/min};
+    };
+    const F = {cov:swing("cov",CAMCFG.MIN_COV), cen:swing("cen",CAMCFG.MIN_CEN), str:swing("str",CAMCFG.MIN_STR)};
+
+    // Only re-pick the driving signal between reps, never mid-oscillation.
+    if(cam.zone==="low"){
+      cam.feature = ["cov","cen","str"].reduce((best,k)=> F[k].score>F[best].score ? k : best, "cov");
+    }
+    const f = F[cam.feature];
+    const s = cam.feature==="cov" ? cov : (cam.feature==="cen" ? cen : str);
+
+    $("camBar").style.width = Math.min(100, f.score*55) + "%";
+
+    if(cam.samples.length < 30){ camSay("analyse en cours…"); return; }
+
+    if(f.score < 1){
+      camSay("mouvement trop faible — amplitude complète !");
+      return;
+    }
+
+    /* ----- one full down-and-up swing = one rep ----- */
+    const down = f.lo + f.r*0.35, up = f.lo + f.r*0.65;
+    if(cam.zone==="low"){
+      if(s > up) cam.zone = "high";
+      else camSay("je te vois — continue !", "good");
+    }else{
+      if(s < down){
+        cam.zone = "low";
+        if(now - cam.lastRepAt > EXERCISES[cfg.exercise].minGap){
+          cam.lastRepAt = now;
+          camSay("répétition validée ✓", "good");
+          addRep(true);
+        }else{
+          camSay("trop rapide pour être une vraie rép.", "bad");
+        }
+      }else camSay("je te vois — continue !", "good");
+    }
+  }
+
+  function camStop(){
+    cam.running = false;
+    if(cam.raf){ cancelAnimationFrame(cam.raf); cam.raf = null; }
+    if(cam.stream){ cam.stream.getTracks().forEach(t=>{ try{t.stop()}catch(e){} }); cam.stream = null; }
+    const v = $("camVideo");
+    if(v) v.srcObject = null;
+    cam.bg = null; cam.samples.length = 0; cam.snaps.length = 0; cam.phase = "off";
+  }
+
+  $("camEnable").addEventListener("click", camStart);
+
+  $("camSwitch").addEventListener("click", async ()=>{
+    cam.facing = (cam.facing==="user") ? "environment" : "user";
+    camStop();
+    await camStart();   // rep count is deliberately preserved across the switch
+  });
+
+  $("camFallback").addEventListener("click", ()=>{
+    camStop();
+    activeMode = "manual";       // only for this alarm; the saved setting stays
+    applyRingUI();
+  });
+
   /* ================= FINISH ================= */
   function finish(skipped){
     stopAlarmSound();
     releaseWake();
     detachMotion();
+    camStop();
     const ex = EXERCISES[cfg.exercise];
     const d = new Date();
     $("doneTitle").textContent = skipped ? "Alarme arrêtée" : "Bravo, tu es réveillé !";
