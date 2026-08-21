@@ -33,6 +33,14 @@ pour essayer sans attendre.
 Tu peux utiliser la **caméra avant ou arrière** (bouton « ↺ Autre caméra ») pour
 faire valider les répétitions par l'image.
 
+**Rien à taper au réveil.** Choisis « Vérification → Caméra », puis utilise
+« 📷 Vérifier mon cadrage » le soir pour placer ton téléphone, te voir à l'écran
+et autoriser la caméra une bonne fois. L'aperçu est coupé dès que tu actives
+l'alarme. Le matin, quand la sonnerie part, **la caméra s'ouvre toute seule** et
+tu te vois immédiatement — aucun bouton à chercher. Si l'autorisation n'a pas
+encore été donnée (ou si le navigateur exige un appui), un bouton « Activer la
+caméra » apparaît en secours.
+
 **Comment ça marche.** Aucun modèle d'IA n'est téléchargé — tout est calculé sur
 place, en JavaScript :
 
