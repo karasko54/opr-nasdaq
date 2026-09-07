@@ -52,6 +52,10 @@ jobs:
           OPR_ASSET: "nas"
           OPR_LABEL: "NAS100"
           OPR_BUFFER: "0.40"
+          # Silencieux : le NASDAQ continue d'etre analyse et journalise
+          # (MFE/MAE, stats) mais n'envoie plus rien sur Telegram, pour ne
+          # garder que les signaux BTC pendant le challenge prop firm.
+          OPR_SILENT: "1"
           # en run manuel avec la case cochee -> message de test ; sinon vide
           OPR_TEST: ${{ (github.event_name == 'workflow_dispatch' && inputs.test) && '1' || '' }}
         run: python opr_live.py
