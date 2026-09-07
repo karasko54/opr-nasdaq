@@ -37,6 +37,7 @@ jobs:
           OPR_SYMBOL: "^NDX"
           OPR_ASSET: "nas"
           OPR_LABEL: "NAS100"
+          OPR_SILENT: "1"       # suivi et journal conserves, notifications coupees
         run: python trade_monitor.py
 
       - name: Surveiller le trade (BTC)
