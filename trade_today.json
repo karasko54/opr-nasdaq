@@ -1,1 +1,1 @@
-{"date": "2026-09-16", "status": "none"}
+{"date": "2026-09-17", "status": "valid", "label": "NAS100", "sens": "ACHAT", "side": 1, "entry": 29453.553125, "sl": 29360.5771484375, "tp": 29778.969042968743, "risk": 92.97597656249854, "orH": 29412.23046875, "orL": 29308.923828125, "ctx": "EMA20 > EMA50 (M5) | Supertrend H1 haussier", "be_trig": 29639.505078124996, "be_r": 2.0, "tp_r": 3.5, "flags": {"entered": false, "be": false, "closed": false, "reason": null, "journaled": false}, "notified": {"entered": false, "be": false, "closed": false}}
