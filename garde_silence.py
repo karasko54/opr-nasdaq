@@ -5,8 +5,10 @@ Garde-fou : alerte Telegram si aucune session OPR n'a ete envoyee aujourd'hui.
 
 POURQUOI CE FICHIER EXISTE
 --------------------------
-Le robot repose en pratique sur UN SEUL declenchement fiable par jour :
-cron-job.org, a 13:48 UTC. Les 7 crons GitHub declares dans opr.yml sont
+Le robot repose en pratique sur les seuls declenchements fiables : DEUX jobs
+cron-job.org, a 09:48 et 09:52 New York (15h48 et 15h52 Paris ; le second est
+un rattrapage ajoute le 28/09/2026, l'anti-doublon .opr_state l'empeche de
+renvoyer un signal deja parti). Les 7 crons GitHub declares dans opr.yml sont
 censes servir de filet, mais la mesure sur 350 executions (20/07 -> 25/09/2026)
 donne :
 
@@ -15,8 +17,9 @@ donne :
     84 % arrivent APRES 15:30 UTC, soit apres la fermeture de la fenetre
     d'entree (11:30 New York) -> opr_live.py les rejette, a juste titre.
 
-Autrement dit : si cron-job.org tombe, il n'y a plus de signal du tout, et
-RIEN ne previent. Ce script comble ce trou.
+Autrement dit : si le service cron-job.org tombe, les deux jobs tombent avec
+lui, il n'y a plus de signal du tout, et RIEN ne previent. Ce script comble ce
+trou.
 
 CE QU'IL FAIT
 -------------
@@ -109,7 +112,7 @@ def main():
         "La fenêtre d'entrée (11h30 New York) est fermée et rien n'a été envoyé.",
         "",
         "À vérifier dans cet ordre :",
-        "1. cron-job.org — le job de 13:48 UTC a-t-il bien tiré ?",
+        "1. cron-job.org — les jobs de 15h48 et 15h52 (Paris) ont-ils tiré ?",
         "2. GitHub Actions — l'exécution est-elle en échec ?",
         "3. yfinance — données indisponibles au moment du run ?",
         "",
