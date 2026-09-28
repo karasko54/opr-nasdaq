@@ -2,11 +2,14 @@ name: Garde-fou silence -> Telegram
 
 # Alerte si aucune session OPR n'a ete envoyee un jour ouvre.
 #
-# POURQUOI : le robot repose en pratique sur UN seul declenchement fiable,
-# cron-job.org a 13:48 UTC. Mesure sur 350 executions (20/07 -> 25/09/2026) :
+# POURQUOI : le robot repose en pratique sur les seuls declenchements fiables de
+# cron-job.org, a 09:48 et 09:52 New York (15h48 / 15h52 Paris, le second etant
+# un rattrapage ajoute le 28/09/2026).
+# Mesure sur 350 executions des crons GitHub (20/07 -> 25/09/2026) :
 # les crons GitHub arrivent a 18:04 UTC en mediane, et 84 % tombent APRES la
 # fermeture de la fenetre d'entree. Ils ne servent donc PAS de filet.
-# Si cron-job.org tombe, le silence est total et rien ne previent.
+# Si le service cron-job.org tombe, ses deux jobs tombent avec lui : le silence
+# est total et rien ne previent.
 #
 # Ce garde-fou n'a pas besoin d'etre a l'heure : une alerte en retard reste
 # une alerte. Il peut donc s'appuyer sur le planificateur GitHub, ce qui le
