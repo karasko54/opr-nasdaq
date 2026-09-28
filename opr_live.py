@@ -42,10 +42,53 @@ from backtest_opr import (
     EMA_FAST, EMA_SLOW, RISK_PCT, ASSETS,
 )
 
+# ── Filtre de range ────────────────────────────────────────────────────────
+# Mesure sur 11 ans de NASDAQ et 5,5 ans de BTC : la strategie a un avantage
+# BRUT reel (+0,22 a +0,34 R par trade), mais les frais en mangent 91 % sur le
+# NASDAQ et 230 % sur le BTC. Les journees a petit range sont perdues d'avance :
+# le spread y represente une part enorme du risque.
+#
+#   NASDAQ : sans filtre  +43,7 R / 11 ans   avec filtre  +108,6 R
+#   BTC    : sans filtre  -97,5 R / 5,5 ans  avec filtre   +41,7 R   (t = -2,08 !)
+#
+# Le seuil est en POURCENTAGE DU PRIX, jamais en points : un seuil en points
+# fixe finit par ne selectionner que les annees ou l'actif cote cher (piege
+# verifie sur l'or, le BTC et le NASDAQ).
+#
+# CHOIX DES VALEURS — calibre le 27/09/2026, verifie sur DEUX jeux independants.
+#
+# NASDAQ 0,23 %
+#   Backtest 11 ans (Dukascopy) : plateau large de 0,20 a 0,45 %, tous positifs
+#   (+73 a +109 R). On ne prend pas le sommet (0,30 %) : ce serait du
+#   surajustement sur un plateau. Correction de source mesuree sur 46 journees
+#   communes : les ranges Dukascopy sont +8,2 % plus larges que ^NDX que ce
+#   robot lit -> 0,25 % Dukascopy equivaut a 0,231 % sur ^NDX.
+#
+# BTC 0,35 %
+#   ATTENTION : ce seuil DOIT etre calibre avec le tampon actif. Le balayage
+#   sans tampon designait 0,45-0,55 %, mais avec le tampon 0,50 du robot :
+#       0,25 % -> +28,2 R   0,30 % -> +27,2 R   0,35 % -> +39,8 R
+#       0,40 % -> +18,2 R   0,45 % -> +10,1 R   0,55 % -> +14,4 R
+#   Tous positifs (contre -97,5 R sans filtre), mais la courbe est instable :
+#   0,35 % est un pic, pas un plateau. On le retient parce que c'est aussi le
+#   meilleur seuil sur les 26 trades reels du journal (+4,42 -> +7,89 R), donc
+#   deux jeux independants concordent. Ne pas le traiter comme une valeur exacte.
+#
+# TP et break-even : NON modifies. Le balayage TP 2-5R x BE aucun/1R/2R avec le
+# filtre actif montre un plateau large ; les reglages actuels (NASDAQ TP 3,5R
+# BE 2R = +68,4 R contre +73,1 R au mieux ; BTC TP 3,5R = +39,8 contre +44,2)
+# sont dedans. Les changer rapporterait moins de 0,5 R par an : pas la peine.
+# A noter tout de meme : sur le BTC, un BE a 1R rend TOUTES les configurations
+# perdantes (-5,9 a -29,1 R). Ne jamais activer de break-even sur le BTC.
+#
+# Mettre OPR_RANGE_PCT=0 pour desactiver et retrouver le comportement precedent.
+RANGE_PCT_DEFAUT = {"nas": 0.23, "btc": 0.35}
+
 SYMBOL   = os.environ.get("OPR_SYMBOL", "^NDX")
 ASSET    = os.environ.get("OPR_ASSET", "nas")
 TP_R, BE_R, SKIP_MONTHS = ASSETS[ASSET]
 LABEL    = os.environ.get("OPR_LABEL", "NAS100")
+RANGE_PCT = float(os.environ.get("OPR_RANGE_PCT", RANGE_PCT_DEFAUT.get(ASSET, 0.0)))
 # tampon anti-fausse-cassure : l'entree STOP est placee a X% du range AU-DELA du bord
 # (0.40 = +40% du range). Filtre les fausses cassures -> passe la strategie de perdante a gagnante.
 BUFFER   = float(os.environ.get("OPR_BUFFER", "0.40"))
@@ -174,6 +217,19 @@ def analyse(m5all, today):
                 "orH": orH, "orL": orL}
 
     rng = orH - orL
+
+    # Filtre de range : sous ce seuil, les frais representent une part trop
+    # grande du risque pour que le trade puisse gagner. Le seuil est relatif au
+    # prix, il reste donc valable quand l'actif monte ou descend.
+    if RANGE_PCT > 0:
+        rng_pct = rng / orMid * 100
+        if rng_pct < RANGE_PCT:
+            return {"trade": False, "ctx": ctx, "orH": orH, "orL": orL,
+                    "range": rng,
+                    "reason": (f"range trop etroit : {rng_pct:.3f} % du prix "
+                               f"(minimum {RANGE_PCT:g} %, soit "
+                               f"{RANGE_PCT/100*orMid:.0f} points)")}
+
     if long_ok:
         entry, sl = orH + BUFFER * rng, orMid   # STOP tamponne : +40% du range au-dessus du haut
         tp = entry + (entry - sl) * TP_R
@@ -184,7 +240,7 @@ def analyse(m5all, today):
         sens = "VENTE"
 
     return {"trade": True, "sens": sens, "entry": entry, "sl": sl, "tp": tp,
-            "orH": orH, "orL": orL, "ctx": ctx}
+            "orH": orH, "orL": orL, "range": rng, "ctx": ctx}
 
 
 # ───────────────────────── Main ─────────────────────────
