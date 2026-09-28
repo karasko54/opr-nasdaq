@@ -1,8 +1,19 @@
 name: OPR Nasdaq -> Telegram
 
-# Se reveille tout seul apres l'ouverture US (09:45 New York).
-# Plusieurs reveils repartis pour couvrir l'heure d'ete ET d'hiver US, et
-# rattraper un eventuel petit retard de GitHub. Le script a un garde-fou
+# Se reveille apres l'ouverture US (09:45 New York).
+#
+# ATTENTION — LE FILET N'EN EST PAS UN. Les crons GitHub ci-dessous etaient
+# censes "rattraper un eventuel petit retard". Mesure sur 350 executions
+# (20/07 -> 25/09/2026) : le retard n'a rien de petit.
+#     horaire programme : 13:45 -> 16:15 UTC
+#     horaire reel      : mediane 18:04 UTC
+#     84 % arrivent APRES 15:30 UTC, soit apres la fermeture de la fenetre
+#     d'entree (11:30 New York) : opr_live.py les rejette, a juste titre.
+# En pratique, le SEUL declenchement fiable est celui de cron-job.org a
+# 13:48 UTC. Les crons sont conserves parce qu'ils ne coutent rien et tombent
+# juste 16 % du temps, mais ils ne doivent PAS etre pris pour un filet.
+# Le vrai filet, c'est garde.yml : il alerte sur Telegram si aucune session
+# n'a ete envoyee un jour ouvre. Le script a un garde-fou
 # (n'agit qu'entre 09:45 et 11:30 New York) + un anti-doublon (1 seul message).
 #   ETE  (EDT) : 09:45 NY = 13:45 UTC ... 11:30 NY = 15:30 UTC
 #   HIVER(EST) : 09:45 NY = 14:45 UTC ... 11:30 NY = 16:30 UTC
