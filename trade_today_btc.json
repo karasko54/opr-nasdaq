@@ -1,1 +1,1 @@
-{"date": "2026-10-02", "status": "valid", "label": "BTC", "sens": "ACHAT", "side": 1, "entry": 87414.61328125, "sl": 86857.40234375, "tp": 89364.8515625, "risk": 557.2109375, "orH": 87136.0078125, "orL": 86578.796875, "ctx": "EMA20 > EMA50 (M5) | Supertrend H1 haussier", "be_trig": null, "be_r": null, "tp_r": 3.5, "flags": {"entered": false, "be": false, "closed": true, "reason": null, "journaled": false, "post_close": true}, "notified": {"entered": false, "be": false, "closed": true}}
+{"date": "2026-10-05", "status": "none"}
