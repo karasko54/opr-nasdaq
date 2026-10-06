@@ -49,3 +49,4 @@ date,actif,sens,entree,sl,tp,range,resultat_R,mfe_R,mae_R,r_22h,mfe_apres_R,mae_
 2026-09-25,BTC,VENTE,83516.5,84039.8,81684.9,523.3,-1.0,0.68,-1.07,,,,SL,EMA20 < EMA50 (M5) | Supertrend H1 baissier,oui
 2026-10-01,NAS100,VENTE,30435.5,30526.1,30118.3,100.7,-1.0,1.77,-1.09,,,,SL,EMA20 < EMA50 (M5) | Supertrend H1 baissier,oui
 2026-10-02,NAS100,ACHAT,30961.2,30860.7,31313.0,111.7,-1.0,0.56,-1.27,,,,SL,EMA20 > EMA50 (M5) | Supertrend H1 haussier,oui
+2026-10-06,BTC,ACHAT,86647.3,86201.4,88207.7,445.9,-1.0,0.1,-1.05,,,,SL,EMA20 > EMA50 (M5) | Supertrend H1 haussier,oui
