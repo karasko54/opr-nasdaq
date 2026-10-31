@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Studio Montage</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand-mark">
+      <div class="logo">🎬</div>
+      <div>
+        <div class="app-name">Studio Montage</div>
+        <div class="app-sub" id="reelsHome">~/reels</div>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-btn active" data-tab="encours"><span>🎞️</span> En cours</button>
+      <button class="nav-btn" data-tab="videos"><span>📁</span> Mes vidéos</button>
+      <button class="nav-btn" data-tab="marque"><span>🎨</span> Ma marque</button>
+      <button class="nav-btn" data-tab="inspiration"><span>✨</span> Inspiration</button>
+      <button class="nav-btn" data-tab="idees"><span>💡</span> Mes idées</button>
+    </nav>
+    <div class="sidebar-foot">
+      <button id="refreshBtn" class="ghost-btn" title="Recharger depuis le dossier">↻ Rafraîchir</button>
+      <div class="hint" id="toolHint"></div>
+    </div>
+  </aside>
+
+  <main class="content">
+    <div id="banner" class="banner hidden"></div>
+
+    <!-- 1. EN COURS -->
+    <section class="tab active" id="tab-encours">
+      <h1>La vidéo en cours de montage</h1>
+      <p class="lead">Où en est ton dernier reel : les coupes, les sous-titres et la version finale.</p>
+      <div id="currentWrap"></div>
+    </section>
+
+    <!-- 2. MES VIDEOS -->
+    <section class="tab" id="tab-videos">
+      <h1>Mes vidéos</h1>
+      <p class="lead">Toutes tes vidéos et leurs versions. Le bouton <b>« Demander une modif »</b> copie un message prêt à m'envoyer.</p>
+      <div id="videosGrid" class="grid"></div>
+      <h2 class="section-h">Vidéos livrées</h2>
+      <p class="lead" id="deliveredPath"></p>
+      <div id="deliveredGrid" class="grid small"></div>
+    </section>
+
+    <!-- 3. MARQUE -->
+    <section class="tab" id="tab-marque">
+      <h1>Ma marque</h1>
+      <p class="lead">Tes couleurs et tes typos. Modifie, regarde l'aperçu bouger, puis enregistre.</p>
+      <div class="brand-layout">
+        <div class="brand-form">
+          <h3>Couleurs</h3>
+          <div id="colorRows" class="color-rows"></div>
+          <h3>Typographies</h3>
+          <div id="fontRows" class="font-rows"></div>
+          <div class="brand-actions">
+            <button id="saveBrand" class="primary-btn">💾 Enregistrer ma marque</button>
+            <button id="copyBrandReq" class="ghost-btn">📋 Copier la demande pour synchroniser le texte de marque</button>
+          </div>
+          <div id="brandSaved" class="saved-msg"></div>
+        </div>
+        <div class="brand-preview">
+          <h3>Aperçu en direct</h3>
+          <div class="phone" id="phonePreview">
+            <div class="phone-inner">
+              <div class="pv-title" id="pvTitle">ton titre accroche</div>
+              <div class="pv-caption"><span id="pvCapA">le mot</span> <span id="pvCapB">clé</span></div>
+              <div class="pv-cta" id="pvCta">commente « EDIT »</div>
+            </div>
+          </div>
+          <p class="hint">L'aperçu utilise tes polices si elles sont installées sur ce Mac, sinon une police de secours.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. INSPIRATION -->
+    <section class="tab" id="tab-inspiration">
+      <h1>Mes vidéos d'inspiration</h1>
+      <p class="lead">Glisse une vidéo ici, ou colle un lien Instagram / TikTok / YouTube.</p>
+      <div id="dropzone" class="dropzone">
+        <div class="dz-icon">⬇️</div>
+        <div>Glisse une vidéo ici</div>
+        <div class="hint">ou</div>
+        <div class="link-row">
+          <input id="inspoLink" type="url" placeholder="Colle un lien Instagram / TikTok / YouTube…" />
+          <button id="addLink" class="primary-btn">Ajouter</button>
+        </div>
+      </div>
+      <div id="inspoGrid" class="grid"></div>
+    </section>
+
+    <!-- 5. IDEES -->
+    <section class="tab" id="tab-idees">
+      <h1>Mes idées de vidéos</h1>
+      <p class="lead">Range tes idées par étape. Glisse une carte d'une colonne à l'autre.</p>
+      <div class="add-idea">
+        <input id="newIdea" type="text" placeholder="Nouvelle idée de vidéo…" />
+        <button id="addIdea" class="primary-btn">+ Ajouter</button>
+      </div>
+      <div class="board" id="board"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
