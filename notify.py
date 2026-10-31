@@ -66,7 +66,17 @@ def send_telegram(text, retries=4, base_delay=3):
 
     Renvoie True seulement si TOUS les envois ont abouti : l'appelant peut
     donc s'y fier pour decider de rejouer la notification plus tard.
+
+    OPR_SILENT=1 met l'actif en MODE SILENCIEUX : le message est journalise
+    dans les logs mais pas envoye, et la fonction renvoie True. Le reste de
+    la chaine continue normalement (etat, journal, MFE/MAE) : l'actif reste
+    suivi et analysable, il ne fait juste plus de bruit sur Telegram.
     """
+    if os.environ.get("OPR_SILENT") == "1":
+        print("[mode silencieux] message NON envoye :")
+        print(text)
+        return True
+
     token = os.environ.get("TELEGRAM_TOKEN")
     chats = _chats()
     if not token or not chats:
