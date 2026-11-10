@@ -152,4 +152,4 @@ if __name__ == "__main__":
     lv = lv[lv["rank"] <= TOP_N]
     print(f"Niveaux retenus (top {TOP_N}) a GEX > 0 : {(lv.gex > 0).mean() * 100:.0f} %")
     print(dy.tail(5).round(0).to_string())
-    print(lv.tail(8).round(0).to_string(index=False))
+    print(lv.tail(8).round({"gex": 0}).to_string(index=False))

@@ -232,6 +232,30 @@ def main():
     tr = simulate(df, f, find_signals(f, real, a.z), **kw)
     tc = simulate(df, f, find_signals(f, ctrl, a.z), **kw)
 
+    print("0) ETUDE D'EVENEMENT — mouvement moyen APRES le signal, dans le sens du trade,")
+    print("   en volatilite horaire, SANS stop ni objectif ni frais (t entre parentheses).")
+    print("   C'est le test le plus pur : y a-t-il une information, oui ou non ?")
+    c = df["close"].to_numpy()
+    vpa = f["vp"].to_numpy()
+
+    def fwd(x, h):
+        i = x["i"].to_numpy()
+        i = i[i + h < len(c)]
+        r = x["side"].to_numpy()[:len(i)] * (c[i + h] - c[i]) / vpa[i]
+        r = r[np.isfinite(r)]
+        return f"{r.mean():+.3f}({r.mean() / (r.std(ddof=1) / np.sqrt(len(r))):+.1f})" if len(r) > 2 else "   n/a"
+
+    groups = [("fade  GEX>0 (theorie)", tr[(tr.kind == "fade") & (tr.gex > 0)]),
+              ("fade  GEX<0", tr[(tr.kind == "fade") & (tr.gex < 0)]),
+              ("fade  temoin", tc[tc.kind == "fade"]),
+              ("break GEX<0 (theorie)", tr[(tr.kind == "break") & (tr.gex < 0)]),
+              ("break GEX>0", tr[(tr.kind == "break") & (tr.gex > 0)]),
+              ("break temoin", tc[tc.kind == "break"])]
+    print(f"   {'':<24}{'n':>6}   {'15 min':>12} {'1 h':>12} {'4 h':>12} {'12 h':>12}")
+    for lab, x in groups:
+        print(f"   {lab:<24}{len(x):>6}   " + " ".join(f"{fwd(x, h):>12}" for h in (15, 60, 240, 720)))
+    print()
+
     print("1) LES 4 CASES — chaque signal evalue independamment (strikes majeurs)")
     for kind, lab in (("fade", "ABSORPTION -> contrer"), ("break", "INITIATIVE -> suivre")):
         for pos, gl in ((True, "GEX>0"), (False, "GEX<0")):
@@ -274,7 +298,7 @@ def main():
         print("   (colonnes : TP = 1R, 2R, 3R)")
 
     cols = ["time", "kind", "side", "level", "gex", "rank", "R", "R_brut", "frais_R", "sortie"]
-    st[cols].round(4).to_csv("resultats_orderflow.csv", index=False)
+    st[cols].round({"R": 4, "R_brut": 4, "frais_R": 4, "gex": 0}).to_csv("resultats_orderflow.csv", index=False)
     print("\nDetail des trades de la strategie -> resultats_orderflow.csv")
 
 
