@@ -50,6 +50,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master   # derniere version de l etat, pas celle du declenchement (evite les conflits entre runs en file)
 
       - uses: actions/setup-python@v5
         with:
@@ -98,6 +100,7 @@ jobs:
             if git pull --rebase --autostash origin master && git push; then
               echo "push OK (tentative $i)"; exit 0
             fi
+            git rebase --abort 2>/dev/null || true
             echo "push echoue, nouvelle tentative dans $((i*3))s..."; sleep $((i*3))
           done
           echo "!! push definitivement echoue apres 5 tentatives"; exit 1
