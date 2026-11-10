@@ -70,10 +70,12 @@ def load_flow():
     df = df[~df.index.duplicated()]
     full = pd.date_range(df.index[0], df.index[-1], freq="1min")
     df = df.reindex(full)
+    df["trou"] = df["close"].isna()          # minute sans donnee (jour absent chez Binance)
     df["close"] = df["close"].ffill()
     for c in ("open", "high", "low"):
         df[c] = df[c].fillna(df["close"])
-    df = df.fillna(0.0)
+    num = df.columns.drop("trou")
+    df[num] = df[num].fillna(0.0)
     return df
 
 
@@ -85,6 +87,11 @@ def features(df, win=WIN):
     f["z"] = d / d.rolling(1440).std().shift(1)
     r = np.log(df["close"]).diff()
     f["vp"] = r.rolling(1440).std().shift(1) * np.sqrt(60) * df["close"]   # vol horaire, en prix
+    # CORRECTIF : apres un trou de donnees, le prix est fige, la volatilite
+    # mesuree tombe vers zero et le risque du trade avec -> R absurdes. On
+    # neutralise les signaux tant que la fenetre de 24 h contient un trou.
+    bad = df["trou"].rolling(1440 + win).sum().fillna(1) > 0
+    f.loc[bad, ["z", "vp"]] = np.nan
     f["hi"] = df["high"].rolling(win).max()
     f["lo"] = df["low"].rolling(win).min()
     f["c"] = df["close"]
