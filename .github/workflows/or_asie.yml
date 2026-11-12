@@ -50,7 +50,7 @@ jobs:
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
           # un fichier a la fois : "git add a b" n'ajoute RIEN si l'un des deux n'existe pas encore
-          for f in .or_asie_state journal_or.csv; do
+          for f in .or_asie_state journal_or.csv journal_or_nuits.csv; do
             if [ -f "$f" ]; then git add "$f"; fi
           done
           if git diff --cached --quiet; then

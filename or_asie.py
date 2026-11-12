@@ -18,13 +18,17 @@ Modes :
   python or_asie.py nuit      -> lance vers 02h15 : surveille jusqu'a 05h02 et envoie
                                  l'OPR (silencieux), le SIGNAL (sonore), puis TP / SL / sortie 05h00
   python or_asie.py rejouer AAAA-MM-JJ -> rejoue une nuit passee sans rien envoyer (controle)
+  python or_asie.py simuler AAAA-MM-JJ [HH:MM debut] [HH:MM arret] -> meme controle mais par le VRAI
+                                 chemin de la nuit (horloge acceleree, memoire, journaux) ; rien ne part sur Telegram
 
 Donnees : Dukascopy XAU/USD bid (temps reel, < 1 min de retard, meme source que le backtest).
 Si les donnees manquent, le robot le DIT sur Telegram plutot que de se taire.
 """
 import os
 import sys
+import csv
 import json
+import tempfile
 import time
 import random
 import string
@@ -51,6 +55,7 @@ CAPITAL = float(os.environ.get("OR_CAPITAL", "10000"))      # compte FTMO 10K
 RISQUES = (1.0, 0.5)                                          # % : normal / garde-fou
 ETAT = ".or_asie_state"
 JOURNAL = "journal_or.csv"
+JOURNAL_NUITS = "journal_or_nuits.csv"   # une ligne par nuit, trade ou pas (base d'etude)
 PAUSE = 5            # s entre deux lectures du prix
 POINT_MIN = 2        # min apres le signal : point de controle "SL/TP poses ?"
 RAPIDE_MIN = 5       # TP/SL touche en moins de N min -> alerte sonore "n'entre plus"
@@ -243,6 +248,101 @@ def journaliser(jour, sig, issue, R):
                 f"{sig['e']:.2f},{sig['sl']:.2f},{sig['tp']:.2f},{sig['risque']:.2f},{issue},{R:+.2f}\n")
 
 
+COLS_NUIT = ["date", "motif", "regle_a", "atr_pct", "veille_atr", "atr_usd", "opr_haut", "opr_bas", "opr_usd",
+             "opr_sur_atr", "nb_refus", "refus", "signal_heure", "sens", "entree", "sl", "tp", "stop_usd",
+             "stop_sur_opr", "rsi", "retard_signal_s", "issue", "R", "duree_min", "heure_issue"]
+
+
+def journal_nuit(e, jour, motif, ra=None, res=None, sig=None, issue=None, R=None, t=None):
+    """Une ligne par nuit, qu'il y ait eu un trade ou non : ce qui permettra plus tard d'etudier
+    ce qui distingue les bonnes nuits des mauvaises. motif = regle_a / opr_invalide /
+    stop_trop_petit / aucune_cassure / trade / incomplet."""
+    if e.get("journal_nuit"):
+        return
+    L = {"date": str(jour.date()), "motif": motif}
+    if ra:
+        L.update(regle_a="oui" if ra["ok"] else "non", atr_pct=f"{ra['atr_pct']:.3f}",
+                 veille_atr=f"{ra['veille']:.3f}", atr_usd=f"{ra['atr']:.2f}")
+    opr = (res or {}).get("opr")
+    if opr:
+        L.update(opr_haut=f"{opr['haut']:.2f}", opr_bas=f"{opr['bas']:.2f}", opr_usd=f"{opr['haut'] - opr['bas']:.2f}")
+        if ra:
+            L["opr_sur_atr"] = f"{(opr['haut'] - opr['bas']) / ra['atr']:.4f}"
+    if res:
+        L.update(nb_refus=len(res["refus"]),
+                 refus=" ; ".join(f"{r['t']} {r['sens']} RSI {r['rsi']:.1f}" for r in res["refus"]))
+    if sig:
+        L.update(signal_heure=sig["t_ferm"][11:16], sens="achat" if sig["side"] == 1 else "vente",
+                 entree=f"{sig['e']:.2f}", sl=f"{sig['sl']:.2f}", tp=f"{sig['tp']:.2f}",
+                 stop_usd=f"{sig['risque']:.2f}", rsi=f"{sig['rsi']:.1f}",
+                 retard_signal_s=e.get("retard_signal_s", ""))
+        if opr and opr["haut"] > opr["bas"]:
+            L["stop_sur_opr"] = f"{sig['risque'] / (opr['haut'] - opr['bas']):.3f}"
+    if issue:
+        fin_t = t + pd.Timedelta(minutes=1)
+        L.update(issue=issue, R=f"{R:+.2f}", heure_issue=f"{fin_t:%H:%M}",
+                 duree_min=f"{(fin_t - pd.Timestamp(sig['t_ferm'])).total_seconds() / 60:.0f}")
+    neuf = not os.path.exists(JOURNAL_NUITS)
+    with open(JOURNAL_NUITS, "a", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLS_NUIT, lineterminator="\n")
+        if neuf:
+            w.writeheader()
+        w.writerow({k: L.get(k, "") for k in COLS_NUIT})
+    e["journal_nuit"] = True
+
+
+class Reel:
+    """Horloge et flux de prix reels. Simule (plus bas) offre la meme interface avec une nuit passee :
+    le controle passe ainsi par EXACTEMENT le meme code que la vraie nuit."""
+    def __init__(self):
+        self._m1 = None; self._t = 0.0
+
+    def now(self):
+        return pd.Timestamp.now(tz=TZ)
+
+    def sleep(self, s):
+        time.sleep(s)
+
+    def h1(self):
+        return barres("1HOUR", 320)
+
+    def m1(self):
+        if self._m1 is None or time.time() - self._t > 1800:
+            self._m1 = barres("1MIN", 4); self._t = time.time()        # historique complet (RSI)
+        else:                                                           # ensuite : les 20 dernieres minutes
+            frais = barres("1MIN", 20 / 1440)
+            if len(frais):
+                m = pd.concat([self._m1, frais]); self._m1 = m[~m.index.duplicated(keep="last")].sort_index()
+        return self._m1
+
+
+class Simule:
+    """Nuit passee rejouee en accelere : l'horloge avance a chaque pause, et chaque bougie M1
+    n'est livree que `retard` secondes apres sa cloture, comme le vrai flux Dukascopy."""
+    def __init__(self, jour, debut="02:15", retard=10, arret=None, donnees=None):
+        self.t = jour + pd.Timedelta(debut + ":00")
+        self.retard = pd.Timedelta(seconds=retard)
+        self.arret = jour + pd.Timedelta(arret + ":00") if arret else None
+        if donnees is None:
+            n = (pd.Timestamp.now(tz=TZ) - jour).days
+            donnees = (barres("1HOUR", n + 320), barres("1MIN", n + 4))
+        self._h1, self._m1 = donnees
+
+    def now(self):
+        return self.t
+
+    def sleep(self, s):
+        self.t += pd.Timedelta(seconds=s)
+        if self.arret is not None and self.t >= self.arret:
+            raise KeyboardInterrupt("arret simule")
+
+    def h1(self):
+        return self._h1[self._h1.index + pd.Timedelta(hours=1) <= self.t]
+
+    def m1(self):
+        return self._m1[self._m1.index + pd.Timedelta(minutes=1) + self.retard <= self.t]
+
+
 def envoyer(e, cle, texte, silencieux=False, test=False):
     """Envoie une fois par cle et par nuit ; ne marque 'envoye' que si Telegram a confirme."""
     if test:
@@ -298,9 +398,10 @@ def verdict():
         e[cle] = True; ecrire_etat(e)
 
 
-def nuit(jour=None, test=False, maintenant=None):
+def nuit(jour=None, test=False, maintenant=None, env=None):
+    env = env or Reel()
     reel = maintenant is None
-    now = maintenant or pd.Timestamp.now(tz=TZ)
+    now = maintenant or env.now()
     jour = jour or now.normalize()
     fin = jour + pd.Timedelta(hours=5, minutes=2)
     if reel and (now < jour + pd.Timedelta(hours=1) or now >= fin):
@@ -313,24 +414,21 @@ def nuit(jour=None, test=False, maintenant=None):
     if e.get("fini") and not test:
         print("nuit deja traitee"); return
     try:
-        ra = regle_a(barres("1HOUR", 320), jour)
+        ra = regle_a(env.h1(), jour)
     except Exception as ex:
         envoyer(e, "err_h1", f"⚠️ OR ASIE : donnees indisponibles ({ex}). Surveille TradingView toi-meme cette nuit.", test=test)
         return
     print("regle A :", ra)
     if not ra["ok"]:
         envoyer(e, "pas_de_trade", f"😴 OR ASIE {jour:%d/%m} : pas de trade (regle A). {ra['pourquoi']}", silencieux=True, test=test)
+        if not test:
+            journal_nuit(e, jour, "regle_a", ra)
         e["fini"] = True; ecrire_etat(e) if not test else None; return
-    erreurs = 0; m1 = None; t_plein = 0.0
+    erreurs = 0; res = None
     while True:
-        now = pd.Timestamp.now(tz=TZ) if reel else maintenant
+        now = env.now() if reel else maintenant
         try:
-            if m1 is None or time.time() - t_plein > 1800:
-                m1 = barres("1MIN", 4); t_plein = time.time()       # historique complet (RSI)
-            else:                                                    # ensuite : les 20 dernieres minutes
-                frais = barres("1MIN", 20 / 1440)
-                if len(frais):
-                    m1 = pd.concat([m1, frais]); m1 = m1[~m1.index.duplicated(keep="last")].sort_index()
+            m1 = env.m1()
             if not reel:
                 m1 = m1[m1.index < now]
             erreurs = 0
@@ -338,7 +436,12 @@ def nuit(jour=None, test=False, maintenant=None):
             erreurs += 1
             if erreurs == 3:
                 envoyer(e, "err_m1", f"⚠️ OR ASIE : flux de prix coupe ({ex}). Regarde TradingView !", test=test)
-            time.sleep(30); continue
+            env.sleep(30)
+            if reel and env.now() >= fin:       # flux coupe jusqu'au bout : on le note et on sort
+                if not test:
+                    journal_nuit(e, jour, "incomplet", ra, res, e.get("sig")); ecrire_etat(e)
+                return
+            continue
         if len(m1) and (now - m1.index[-1]) > pd.Timedelta(minutes=15) and now >= jour + pd.Timedelta(hours=2, minutes=40):
             envoyer(e, "err_retard", f"⚠️ OR ASIE : prix Dukascopy figes depuis {m1.index[-1]:%H:%M}. Regarde TradingView !", test=test)
         res = chercher_signal(m5_de(m1), jour, ra["atr"], heure_sure(m1, now) if reel else now)
@@ -346,6 +449,8 @@ def nuit(jour=None, test=False, maintenant=None):
             o = res["opr"]
             if o.get("invalide"):
                 envoyer(e, "opr", f"OR ASIE {jour:%d/%m} : OPR {o['bas']:.2f} - {o['haut']:.2f} — pas de trade ({o['invalide']}).", silencieux=True, test=test)
+                if not test:
+                    journal_nuit(e, jour, "opr_invalide", ra, res)
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
             envoyer(e, "opr", f"👀 OR ASIE {jour:%d/%m} : OPR formee  haut {o['haut']:.2f} / bas {o['bas']:.2f}\n"
                               f"Robot en surveillance jusqu'a 04h10. {ra['pourquoi']}", silencieux=True, test=test)
@@ -358,9 +463,14 @@ def nuit(jour=None, test=False, maintenant=None):
             envoyer(e, "trop_petit", f"OR ASIE {jour:%d/%m} : cassure {'achat' if sig['side'] == 1 else 'vente'} a "
                                      f"{sig['t_ferm'][11:16]} mais stop {sig['risque']:.2f} $ trop petit (frais trop lourds). "
                                      f"Pas de trade cette nuit.", silencieux=True, test=test)
+            if not test:
+                journal_nuit(e, jour, "stop_trop_petit", ra, res, sig)
             e["fini"] = True; ecrire_etat(e) if not test else None; return
         if sig:
-            e["signal"] = sig
+            # ATTENTION : "sig" = les niveaux ; "signal" = drapeau "message envoye" pose par envoyer().
+            # (les deux partageaient la cle "signal" : le message SIGNAL n'etait alors jamais envoye)
+            e["sig"] = sig
+            e.setdefault("retard_signal_s", round((now - pd.Timestamp(sig["t_ferm"])).total_seconds()))
             txt = msg_signal(sig, ra)
             age = (now - pd.Timestamp(sig["t_ferm"])).total_seconds() / 60
             if age > 10:
@@ -382,6 +492,8 @@ def nuit(jour=None, test=False, maintenant=None):
                 envoyer(e, "issue", txt, silencieux=(issue != "05h00" and not rapide), test=test)
                 if not test and not e.get("journal"):
                     journaliser(jour, sig, issue, R); e["journal"] = True
+                if not test:
+                    journal_nuit(e, jour, "trade", ra, res, sig, issue, R, t)
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
             # point de controle peu apres le signal : position encore ouverte -> SL et TP poses ?
             t5 = pd.Timestamp(sig["t_ferm"]) + pd.Timedelta(minutes=POINT_MIN)
@@ -396,15 +508,20 @@ def nuit(jour=None, test=False, maintenant=None):
                         f"Ensuite tu peux te rendormir : je te previens au TP, au SL, ou a 04h55.", test=test)
             if now >= jour + pd.Timedelta(hours=4, minutes=55) and not e.get("rappel_0500"):
                 envoyer(e, "rappel_0500", "⏰ OR ASIE : sortie forcee a 05h00 — prepare-toi a fermer la position.", test=test)
-                e["rappel_0500"] = True
         elif res["fin_fenetre"]:
             envoyer(e, "rien", f"OR ASIE {jour:%d/%m} : aucune cassure valide avant 04h10. Pas de trade.", silencieux=True, test=test)
+            if not test:
+                journal_nuit(e, jour, "aucune_cassure", ra, res)
             e["fini"] = True; ecrire_etat(e) if not test else None; return
-        if not reel or now >= fin:
+        if not reel:
+            return
+        if now >= fin:              # 05h02 sans conclusion (donnees manquantes) : on le note quand meme
+            if not test:
+                journal_nuit(e, jour, "incomplet", ra, res, e.get("sig")); ecrire_etat(e)
             return
         if not test:
             ecrire_etat(e)
-        time.sleep(PAUSE)
+        env.sleep(PAUSE)
 
 
 def rejouer(date):
@@ -421,6 +538,35 @@ def rejouer(date):
         print("signal :", {k: (round(v, 2) if isinstance(v, float) else v) for k, v in s.items()})
         print("issue :", suivre(m1, s, jour + pd.Timedelta(hours=6), jour))
         print(msg_signal(s, ra))
+
+
+def simuler(date, debut="02:15", arret=None, dossier=None, donnees=None, envoi=None):
+    """Controle de bout en bout : rejoue une nuit passee par le VRAI chemin de nuit() (memes envois,
+    meme memoire, memes journaux), mais rien ne part sur Telegram et tout s'ecrit dans un dossier temporaire.
+    `envoi(texte, silent)` -> True/False permet de simuler une panne Telegram."""
+    global send_telegram, ETAT, JOURNAL, JOURNAL_NUITS
+    d = dossier or tempfile.mkdtemp(prefix="or_sim_")
+    ETAT, JOURNAL, JOURNAL_NUITS = (os.path.join(d, x) for x in ("etat.json", "journal_or.csv", "journal_or_nuits.csv"))
+    jour = pd.Timestamp(date, tz=TZ)
+    env = Simule(jour, debut=debut, arret=arret, donnees=donnees)
+    envois = []
+
+    def faux(texte, silent=False, **_):
+        ok = envoi(texte, silent) if envoi else True
+        envois.append((env.t, silent, texte, ok))
+        print(f"[{env.t:%H:%M:%S}] {'silencieux' if silent else 'SONORE'}{'' if ok else ' (ECHEC simule)'} | "
+              + texte.replace("\n", "\n      ") + "\n")
+        return ok
+    send_telegram = faux
+    try:
+        nuit(jour=jour, env=env)
+    except KeyboardInterrupt:
+        print(f"[{env.t:%H:%M:%S}] --- arret simule ---")
+    print(f"fin de simulation a {env.t:%H:%M:%S} : {len(envois)} message(s)")
+    for f in (JOURNAL, JOURNAL_NUITS):
+        if os.path.exists(f):
+            print(os.path.basename(f), ":"); print(open(f, encoding="utf-8").read())
+    return d, envois
 
 
 if __name__ == "__main__":
@@ -443,5 +589,7 @@ if __name__ == "__main__":
         diag()
     elif mode == "rejouer":
         rejouer(sys.argv[2])
+    elif mode == "simuler":
+        simuler(sys.argv[2], *sys.argv[3:5])
     else:
         print(__doc__)
