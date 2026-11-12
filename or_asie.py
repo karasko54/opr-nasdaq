@@ -50,6 +50,10 @@ CAPITAL = float(os.environ.get("OR_CAPITAL", "10000"))      # compte FTMO 10K
 RISQUES = (1.0, 0.5)                                          # % : normal / garde-fou
 ETAT = ".or_asie_state"
 JOURNAL = "journal_or.csv"
+PAUSE = 5            # s entre deux lectures du prix
+POINT_MIN = 2        # min apres le signal : point de controle "SL/TP poses ?"
+RAPIDE_MIN = 5       # TP/SL touche en moins de N min -> alerte sonore "n'entre plus"
+MARGE_FLUX = 45      # s : au-dela, on n'attend plus la derniere bougie M1 (minute sans cotation)
 
 
 # ── Donnees Dukascopy ───────────────────────────────────────────────────────
@@ -124,6 +128,14 @@ def m5_de(m1):
     m5 = m1.resample("5min").agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
     m5["rsi"] = rsi_wilder(m5["close"], RSI_LEN)
     return m5
+
+
+def heure_sure(m1, now):
+    """Dukascopy ne livre une bougie M1 que 2 a 15 s apres sa cloture. Tant que la derniere minute
+    n'est pas arrivee, la bougie M5 n'est pas complete : on ne juge que ce qui est vraiment livre."""
+    if not len(m1):
+        return now
+    return min(now, max(m1.index[-1] + pd.Timedelta(minutes=1), now - pd.Timedelta(seconds=MARGE_FLUX)))
 
 
 def chercher_signal(m5, jour, atr, maintenant):
@@ -291,11 +303,16 @@ def nuit(jour=None, test=False, maintenant=None):
     if not ra["ok"]:
         envoyer(e, "pas_de_trade", f"😴 OR ASIE {jour:%d/%m} : pas de trade (regle A). {ra['pourquoi']}", silencieux=True, test=test)
         e["fini"] = True; ecrire_etat(e) if not test else None; return
-    erreurs = 0
+    erreurs = 0; m1 = None; t_plein = 0.0
     while True:
         now = pd.Timestamp.now(tz=TZ) if reel else maintenant
         try:
-            m1 = barres("1MIN", 4)
+            if m1 is None or time.time() - t_plein > 1800:
+                m1 = barres("1MIN", 4); t_plein = time.time()       # historique complet (RSI)
+            else:                                                    # ensuite : les 20 dernieres minutes
+                frais = barres("1MIN", 20 / 1440)
+                if len(frais):
+                    m1 = pd.concat([m1, frais]); m1 = m1[~m1.index.duplicated(keep="last")].sort_index()
             if not reel:
                 m1 = m1[m1.index < now]
             erreurs = 0
@@ -306,7 +323,7 @@ def nuit(jour=None, test=False, maintenant=None):
             time.sleep(30); continue
         if len(m1) and (now - m1.index[-1]) > pd.Timedelta(minutes=15) and now >= jour + pd.Timedelta(hours=2, minutes=40):
             envoyer(e, "err_retard", f"⚠️ OR ASIE : prix Dukascopy figes depuis {m1.index[-1]:%H:%M}. Regarde TradingView !", test=test)
-        res = chercher_signal(m5_de(m1), jour, ra["atr"], now)
+        res = chercher_signal(m5_de(m1), jour, ra["atr"], heure_sure(m1, now) if reel else now)
         if res["opr"] and not e.get("opr"):
             o = res["opr"]
             if o.get("invalide"):
@@ -340,7 +357,7 @@ def nuit(jour=None, test=False, maintenant=None):
                     txt += "\nFERME LA POSITION si elle est encore ouverte."
                 # trade plie en moins de 5 min : tu es peut-etre en train d'entrer -> alerte sonore
                 duree = (t + pd.Timedelta(minutes=1) - pd.Timestamp(sig["t_ferm"])).total_seconds() / 60
-                rapide = issue != "05h00" and duree <= 5
+                rapide = issue != "05h00" and duree <= RAPIDE_MIN
                 if rapide:
                     txt += (f"\nTouche {duree:.0f} min apres le signal. Pas encore entre ? N'ENTRE PLUS. "
                             f"Entre en retard ? Ta position n'est plus celle du robot : verifie ton SL et ton TP.")
@@ -348,13 +365,13 @@ def nuit(jour=None, test=False, maintenant=None):
                 if not test and not e.get("journal"):
                     journaliser(jour, sig, issue, R); e["journal"] = True
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
-            # point de controle 5 min apres le signal : position encore ouverte -> SL et TP poses ?
-            t5 = pd.Timestamp(sig["t_ferm"]) + pd.Timedelta(minutes=5)
+            # point de controle peu apres le signal : position encore ouverte -> SL et TP poses ?
+            t5 = pd.Timestamp(sig["t_ferm"]) + pd.Timedelta(minutes=POINT_MIN)
             if t5 <= now < t5 + pd.Timedelta(minutes=10) and len(m1):
                 px = float(m1["close"].iloc[-1])
                 r = sig["side"] * (px - sig["e"]) / sig["risque"]
                 envoyer(e, "point_5min",
-                        f"🔔 OR ASIE — point +5 min : position toujours ouverte\n"
+                        f"🔔 OR ASIE — point +{POINT_MIN} min : position toujours ouverte\n"
                         f"Prix {px:.2f}  ({r:+.2f} R)\n"
                         f"VERIFIE dans MT5 que les deux ordres sont poses :\n"
                         f"SL {sig['sl']:.2f}   |   TP {sig['tp']:.2f}\n"
@@ -369,7 +386,7 @@ def nuit(jour=None, test=False, maintenant=None):
             return
         if not test:
             ecrire_etat(e)
-        time.sleep(20)
+        time.sleep(PAUSE)
 
 
 def rejouer(date):
