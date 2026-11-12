@@ -6,7 +6,7 @@ Surveillant du trade OPR en cours -> Telegram.
 Tourne toutes les ~10 min pendant la seance (15h45-21h Paris) et suit le trade
 enregistre par opr_live.py (trade_today.json). Envoie une notif pour chaque
 etape franchie, une seule fois :
-  🎯 entree declenchee   🟢 BE atteint   🏁 TP atteint   🛡️ SL touche
+  🟢 BE atteint   🏁 TP atteint   🛡️ SL touche   (l'entree declenchee n'est plus annoncee)
   ⏰ cloture 21h         ⚪ pas de cassure -> ordre annule
 Meme bot Telegram que les autres messages.
 """
@@ -261,8 +261,9 @@ def main():
             events.append(("closed", f"⚪ {lbl} — pas de cassure avant 17h30, ordre annulé. Pas de trade aujourd'hui."))
         flags["closed"] = True
 
-    if entered and not notified["entered"]:
-        events.append(("entered", f"🎯 Entrée déclenchée — {lbl} {T['sens']} à {r(entry)}\n🛡️ SL: {r(sl)}   🏁 TP: {r(tp)}"))
+    # "Entree declenchee" n'est plus envoye (12/11/2026, moins de messages) : ta plateforme te le dit deja.
+    if entered:
+        notified["entered"] = True
 
     if be and not notified["be"]:
         events.append(("be", f"🟢 BE atteint (2R) — {lbl}\nDéplace ton SL à l'entrée ({r(entry)}). Trade sécurisé ✅"))

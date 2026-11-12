@@ -3,7 +3,7 @@
 """
 Brief macro-economique -> Telegram.
 
-Envoie chaque matin (lun-ven) les grosses news US (USD, impact High) du jour
+Envoie le matin (lun-ven), UNIQUEMENT s'il y en a, les grosses news US (USD, impact High) du jour
 susceptibles de faire bouger le NASDAQ : NFP, CPI, FOMC, discours Fed, ISM,
 PIB, ventes au detail, inscriptions chomage, etc.
 Les news qui tombent dans la fenetre OPR (14h-17h Paris) sont marquees ⭐.
@@ -102,11 +102,16 @@ def build_message(events, today):
             rows.append((t, e.get("title", "?")))
     rows.sort(key=lambda r: r[0])
 
+    # Le robot ne previent que s'il y a quelque chose a dire (12/11/2026, moins de messages) :
+    # une grosse news US, ou un robot OPR arrete. Le garde-fou de silence (garde.yml) reste actif.
+    alertes = [l for l in health_lines(today) if not l.startswith("🤖")]
+    if not rows and not alertes:
+        return None
+
     entete = f"📅 Macro USD — {JOURS[today.weekday()]} {today:%d/%m}"
-    if not rows:
-        lines = [entete, "✅ Aucune grosse news US aujourd'hui."]
-    else:
-        lines = [f"{entete} (news qui bougent le NASDAQ)"]
+    lines = []
+    if rows:
+        lines.append(f"{entete} (news qui bougent le NASDAQ)")
         has_star = False
         for t, title in rows:
             star = ""
@@ -116,12 +121,10 @@ def build_message(events, today):
             lines.append(f"🔴 {t:%H:%M} — {title}{star}")
         if has_star:
             lines.append("⚠️ News dans la fenêtre OPR (14h–17h) → prudence sur le trade.")
-
-    # preuve de vie quotidienne du robot (voir health_lines)
-    health = health_lines(today)
-    if health:
-        lines.append("")
-        lines.extend(health)
+    if alertes:
+        if lines:
+            lines.append("")
+        lines.extend(alertes)
     return "\n".join(lines)
 
 
@@ -132,6 +135,9 @@ def main():
         return
     events = fetch_events()
     msg = build_message(events, now_paris.date())
+    if msg is None:
+        print("Aucune grosse news US et robots actifs — aucun message envoye.")
+        return
     print(msg)
     send_telegram(msg)
 

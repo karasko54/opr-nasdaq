@@ -16,7 +16,9 @@ Regles = celles du backtest (opr_asie_marches.py + regle A), heure de Paris :
 Modes :
   python or_asie.py verdict   -> le soir (~23h10) : "cette nuit trade possible / pas de trade"
   python or_asie.py nuit      -> lance vers 02h15 : surveille jusqu'a 05h02 et envoie
-                                 l'OPR (silencieux), le SIGNAL (sonore), puis TP / SL / sortie 05h00
+                                 le SIGNAL (sonore), le point +2 min, puis TP / SL / sortie 05h00.
+                                 Nuit sans trade : UNE ligne silencieuse (ou rien si le verdict du
+                                 soir avait deja dit "pas de trade"). Le detail va dans journal_or_nuits.csv.
   python or_asie.py rejouer AAAA-MM-JJ -> rejoue une nuit passee sans rien envoyer (controle)
   python or_asie.py simuler AAAA-MM-JJ [HH:MM debut] [HH:MM arret] -> meme controle mais par le VRAI
                                  chemin de la nuit (horloge acceleree, memoire, journaux) ; rien ne part sur Telegram
@@ -218,8 +220,7 @@ def msg_signal(sig, ra):
            f"Sortie forcee : 05h00\n\n"
            f"Lots (compte {CAPITAL:,.0f} $) : {l1:.2f} a 1 %  |  {l05:.2f} a 0,5 % (garde-fou)\n"
            f"{ra['pourquoi']} — RSI {sig['rsi']:.1f}\n"
-           f"Garde-fou : 0,5 % si compte a -5 % de son plus haut ; stop total a -7 %.\n"
-           f"Prix Dukascopy : ecart possible de quelques centimes avec ton courtier — garde les niveaux SL/TP.")
+           f"Garde ces SL / TP meme si ton prix d'entree differe de quelques centimes.")
     if l1 < 0.01:
         txt += "\n⚠️ Stop trop large : meme 0,01 lot depasse le risque prevu."
     return txt
@@ -388,14 +389,13 @@ def verdict():
         send_telegram(f"⚠️ OR ASIE : impossible de calculer la regle A ce soir ({ex}). Verifie l'indicateur TradingView."); return
     if ra["ok"]:
         t = (f"🌙 OR ASIE — nuit du {jour:%d/%m} : TRADE POSSIBLE\n{ra['pourquoi']}\n"
-             f"OPR 02h25-02h35, entrees jusqu'a 04h10, sortie 05h00.\n"
-             f"Le robot surveille et t'envoie le signal (alerte sonore). Mets Telegram en exception de « Ne pas deranger ».\n"
-             f"Si a 02h40 tu n'as pas recu « OPR formee », le robot est en panne : regarde TradingView.")
+             f"Signal possible entre 02h35 et 04h10 (alerte sonore), sortie 05h00.\n"
+             f"Sans signal : une seule ligne silencieuse en fin de nuit.")
     else:
-        t = f"😴 OR ASIE — nuit du {jour:%d/%m} : PAS DE TRADE (regle A)\n{ra['pourquoi']}\nDors tranquille."
+        t = f"😴 OR ASIE — nuit du {jour:%d/%m} : PAS DE TRADE (regle A)\n{ra['pourquoi']}"
     print(t)
     if send_telegram(t):
-        e[cle] = True; ecrire_etat(e)
+        e[cle] = "oui" if ra["ok"] else "non"; ecrire_etat(e)
 
 
 def nuit(jour=None, test=False, maintenant=None, env=None):
@@ -420,7 +420,10 @@ def nuit(jour=None, test=False, maintenant=None, env=None):
         return
     print("regle A :", ra)
     if not ra["ok"]:
-        envoyer(e, "pas_de_trade", f"😴 OR ASIE {jour:%d/%m} : pas de trade (regle A). {ra['pourquoi']}", silencieux=True, test=test)
+        if e.get("verdict_" + str(jour.date())) == "non":
+            print("pas de trade (regle A) : deja annonce par le verdict du soir, aucun message")
+        else:
+            envoyer(e, "pas_de_trade", f"😴 OR ASIE {jour:%d/%m} : pas de trade (regle A). {ra['pourquoi']}", silencieux=True, test=test)
         if not test:
             journal_nuit(e, jour, "regle_a", ra)
         e["fini"] = True; ecrire_etat(e) if not test else None; return
@@ -452,11 +455,6 @@ def nuit(jour=None, test=False, maintenant=None, env=None):
                 if not test:
                     journal_nuit(e, jour, "opr_invalide", ra, res)
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
-            envoyer(e, "opr", f"👀 OR ASIE {jour:%d/%m} : OPR formee  haut {o['haut']:.2f} / bas {o['bas']:.2f}\n"
-                              f"Robot en surveillance jusqu'a 04h10. {ra['pourquoi']}", silencieux=True, test=test)
-        for rf in res["refus"]:
-            envoyer(e, f"refus_{rf['t']}", f"OR ASIE : cassure {rf['sens']} a {rf['t']} refusee (RSI {rf['rsi']:.1f}). "
-                                          f"Re-armement si retour dans l'OPR.", silencieux=True, test=test)
         sig = res["signal"]
         if sig and sig["trop_petit"]:
             # le backtest prend la 1re cassure valide puis ecarte la journee si le stop est < 6,67 couts
@@ -509,7 +507,8 @@ def nuit(jour=None, test=False, maintenant=None, env=None):
             if now >= jour + pd.Timedelta(hours=4, minutes=55) and not e.get("rappel_0500"):
                 envoyer(e, "rappel_0500", "⏰ OR ASIE : sortie forcee a 05h00 — prepare-toi a fermer la position.", test=test)
         elif res["fin_fenetre"]:
-            envoyer(e, "rien", f"OR ASIE {jour:%d/%m} : aucune cassure valide avant 04h10. Pas de trade.", silencieux=True, test=test)
+            envoyer(e, "rien", f"OR ASIE {jour:%d/%m} : aucune cassure valide avant 04h10"
+                               + (f" ({len(res['refus'])} refusee(s) par le RSI)" if res["refus"] else "") + ". Pas de trade.", silencieux=True, test=test)
             if not test:
                 journal_nuit(e, jour, "aucune_cassure", ra, res)
             e["fini"] = True; ecrire_etat(e) if not test else None; return
