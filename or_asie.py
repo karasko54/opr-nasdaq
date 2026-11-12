@@ -28,6 +28,7 @@ import json
 import time
 import random
 import string
+import traceback
 import datetime as dt
 
 import numpy as np
@@ -249,14 +250,31 @@ def envoyer(e, cle, texte, silencieux=False, test=False):
     if e.get(cle):
         return
     if send_telegram(texte, silent=silencieux):
-        e[cle] = True; ecrire_etat(e)
+        e[cle] = True
+    else:       # un destinataire en panne ne doit pas faire re-sonner les autres a chaque tour
+        n = e.setdefault("_echecs", {}); n[cle] = n.get(cle, 0) + 1
+        if n[cle] >= (3 if silencieux else 8):      # on insiste plus longtemps pour une alerte sonore
+            print(f"!! {cle} : {n[cle]} envois incomplets, on n'insiste plus"); e[cle] = True
+    ecrire_etat(e)
+
+
+def diag():
+    """Controle sans aucun envoi : acces aux prix + regle A. Sort en erreur si les donnees manquent."""
+    now = pd.Timestamp.now(tz=TZ)
+    h1 = barres("1HOUR", 320); m1 = barres("1MIN", 4)
+    print(f"DIAG {now:%d/%m %H:%M} Paris : H1 {len(h1)} barres, M1 {len(m1)} barres, "
+          f"derniere M1 {m1.index[-1]:%d/%m %H:%M} (il y a {(now - m1.index[-1]).total_seconds() / 60:.0f} min)")
+    print("regle A (provisoire) :", regle_a(h1, (now + pd.Timedelta(hours=6)).normalize()))
+    if len(h1) < 200 or len(m1) < 1000:
+        raise SystemExit("DIAG : donnees Dukascopy insuffisantes")
 
 
 # ── Modes ───────────────────────────────────────────────────────────────────
 def verdict():
     now = pd.Timestamp.now(tz=TZ)
-    if not 19 <= now.hour <= 23:
-        print(f"verdict hors horaire ({now:%H:%M}) : ignore"); return
+    if now.hour != 23:          # avant 23h la seance du jour n'est pas finie : la regle A serait fausse
+        print(f"verdict hors horaire ({now:%H:%M}) : rien n'est envoye, simple controle des donnees")
+        diag(); return
     e = lire_etat()
     cle = "verdict_" + str((now + pd.Timedelta(hours=6)).date())
     if e.get(cle):
@@ -413,7 +431,16 @@ if __name__ == "__main__":
     if mode == "verdict":
         verdict()
     elif mode == "nuit":
-        nuit()
+        for essai in range(1, 6):       # une erreur imprevue ne doit pas arreter la surveillance
+            try:
+                nuit(); break
+            except Exception:
+                traceback.print_exc()
+                print(f"!! nuit() a plante (essai {essai}/5) : reprise dans 15 s"); time.sleep(15)
+        else:
+            raise SystemExit("nuit() : 5 plantages, abandon")
+    elif mode == "diag":
+        diag()
     elif mode == "rejouer":
         rejouer(sys.argv[2])
     else:

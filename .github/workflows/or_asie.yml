@@ -4,8 +4,9 @@ name: OPR Asie or -> Telegram
 #   23h10 dim->jeu : verdict regle A pour la nuit qui suit
 #   02h15 lun->ven : surveillance de la nuit jusqu'a 05h02 (OPR, signal, TP / SL / 05h00)
 # Le mode est choisi automatiquement selon l'heure de Paris (>= 19h -> verdict, sinon nuit).
+# Le verdict n'est envoye qu'entre 23h00 et 23h59 (seance du jour terminee).
 # Les crons GitHub ci-dessous ne sont qu'un filet : ils arrivent souvent en retard ;
-# un run hors horaire ne fait rien.
+# un run hors horaire n'envoie rien (le soir : simple controle des donnees dans le journal du run).
 on:
   schedule:
     - cron: "10 21,22 * * 0-4"   # 23h10 Paris (ete / hiver)
@@ -48,7 +49,10 @@ jobs:
         run: |
           git config user.name  "opr-bot"
           git config user.email "opr-bot@users.noreply.github.com"
-          git add .or_asie_state journal_or.csv 2>/dev/null || true
+          # un fichier a la fois : "git add a b" n'ajoute RIEN si l'un des deux n'existe pas encore
+          for f in .or_asie_state journal_or.csv; do
+            if [ -f "$f" ]; then git add "$f"; fi
+          done
           if git diff --cached --quiet; then
             echo "rien a committer"; exit 0
           fi
