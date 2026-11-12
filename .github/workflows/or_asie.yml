@@ -1,0 +1,77 @@
+name: OPR Asie or -> Telegram
+
+# Deux declenchements par cron-job.org (heure de Paris, meme requete que les autres jobs) :
+#   23h10 dim->jeu : verdict regle A pour la nuit qui suit
+#   02h15 lun->ven : surveillance de la nuit jusqu'a 05h02 (OPR, signal, TP / SL / 05h00)
+# Le mode est choisi automatiquement selon l'heure de Paris (>= 19h -> verdict, sinon nuit).
+# Les crons GitHub ci-dessous ne sont qu'un filet : ils arrivent souvent en retard ;
+# un run hors horaire ne fait rien.
+on:
+  schedule:
+    - cron: "10 21,22 * * 0-4"   # 23h10 Paris (ete / hiver)
+    - cron: "15 0,1 * * 1-5"     # 02h15 Paris (ete / hiver)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: or-asie
+  cancel-in-progress: false
+
+jobs:
+  or_asie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master   # derniere version de l etat
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Installer les dependances
+        run: pip install -r requirements.txt
+
+      - name: OPR Asie or (verdict ou nuit selon l'heure)
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OR_CAPITAL: "10000"
+        run: python or_asie.py
+
+      - name: Memoriser l'etat et le journal
+        if: always()
+        run: |
+          git config user.name  "opr-bot"
+          git config user.email "opr-bot@users.noreply.github.com"
+          git add .or_asie_state journal_or.csv 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "rien a committer"; exit 0
+          fi
+          git commit -m "etat: OPR Asie or"
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin master && git push; then
+              echo "push OK (tentative $i)"; exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            echo "push echoue, nouvelle tentative dans $((i*3))s..."; sleep $((i*3))
+          done
+          echo "!! push definitivement echoue apres 5 tentatives"; exit 1
+
+      - name: Alerte Telegram si echec
+        if: failure()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          IFS=',' read -ra CHATS <<< "$TELEGRAM_CHAT_ID"
+          MSG="⚠️ ${GITHUB_WORKFLOW} a échoué (run #${GITHUB_RUN_NUMBER}) — surveille l'or sur TradingView. Détails : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for c in "${CHATS[@]}"; do
+            [ -n "$c" ] && curl -s -X POST --retry 4 --retry-delay 3 --retry-all-errors \
+              --max-time 30 "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${c}" --data-urlencode "text=${MSG}" >/dev/null || true
+          done

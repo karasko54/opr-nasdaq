@@ -29,14 +29,15 @@ def _mask(chat):
     return chat[:4] + "..." if len(chat) > 6 else chat
 
 
-def _send_one(url, chat, text, retries, base_delay):
+def _send_one(url, chat, text, retries, base_delay, silent=False):
     """Envoie a UN destinataire, avec reessais. Renvoie True si delivre."""
     dest = _mask(chat)
     err = "?"
     for attempt in range(1, retries + 1):
         wait = None
         try:
-            r = requests.post(url, data={"chat_id": chat, "text": text},
+            r = requests.post(url, data={"chat_id": chat, "text": text,
+                                          "disable_notification": "true" if silent else "false"},
                               timeout=TIMEOUT)
             body = {}
             try:
@@ -61,9 +62,10 @@ def _send_one(url, chat, text, retries, base_delay):
     return False
 
 
-def send_telegram(text, retries=4, base_delay=3):
+def send_telegram(text, retries=4, base_delay=3, silent=False):
     """Envoie `text` a tous les destinataires configures.
 
+    silent=True : message sans sonnerie (Telegram "disable_notification").
     Renvoie True seulement si TOUS les envois ont abouti : l'appelant peut
     donc s'y fier pour decider de rejouer la notification plus tard.
     """
@@ -76,5 +78,5 @@ def send_telegram(text, retries=4, base_delay=3):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     ok_all = True
     for chat in chats:  # ex: "12345,-100987" -> perso + canal
-        ok_all = _send_one(url, chat, text, retries, base_delay) and ok_all
+        ok_all = _send_one(url, chat, text, retries, base_delay, silent) and ok_all
     return ok_all
