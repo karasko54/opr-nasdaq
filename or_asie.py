@@ -338,10 +338,27 @@ def nuit(jour=None, test=False, maintenant=None):
                 txt = f"{emo} OR ASIE {jour:%d/%m} : {issue} a {t:%H:%M}  ->  {R:+.2f} R (avant frais)"
                 if issue == "05h00":
                     txt += "\nFERME LA POSITION si elle est encore ouverte."
-                envoyer(e, "issue", txt, silencieux=(issue != "05h00"), test=test)
+                # trade plie en moins de 5 min : tu es peut-etre en train d'entrer -> alerte sonore
+                duree = (t + pd.Timedelta(minutes=1) - pd.Timestamp(sig["t_ferm"])).total_seconds() / 60
+                rapide = issue != "05h00" and duree <= 5
+                if rapide:
+                    txt += (f"\nTouche {duree:.0f} min apres le signal. Pas encore entre ? N'ENTRE PLUS. "
+                            f"Entre en retard ? Ta position n'est plus celle du robot : verifie ton SL et ton TP.")
+                envoyer(e, "issue", txt, silencieux=(issue != "05h00" and not rapide), test=test)
                 if not test and not e.get("journal"):
                     journaliser(jour, sig, issue, R); e["journal"] = True
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
+            # point de controle 5 min apres le signal : position encore ouverte -> SL et TP poses ?
+            t5 = pd.Timestamp(sig["t_ferm"]) + pd.Timedelta(minutes=5)
+            if t5 <= now < t5 + pd.Timedelta(minutes=10) and len(m1):
+                px = float(m1["close"].iloc[-1])
+                r = sig["side"] * (px - sig["e"]) / sig["risque"]
+                envoyer(e, "point_5min",
+                        f"🔔 OR ASIE — point +5 min : position toujours ouverte\n"
+                        f"Prix {px:.2f}  ({r:+.2f} R)\n"
+                        f"VERIFIE dans MT5 que les deux ordres sont poses :\n"
+                        f"SL {sig['sl']:.2f}   |   TP {sig['tp']:.2f}\n"
+                        f"Ensuite tu peux te rendormir : je te previens au TP, au SL, ou a 04h55.", test=test)
             if now >= jour + pd.Timedelta(hours=4, minutes=55) and not e.get("rappel_0500"):
                 envoyer(e, "rappel_0500", "⏰ OR ASIE : sortie forcee a 05h00 — prepare-toi a fermer la position.", test=test)
                 e["rappel_0500"] = True
