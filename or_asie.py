@@ -53,8 +53,10 @@ RSI_LEN, RSI_BAS, RSI_HAUT = 7, 35.0, 95.0
 COUT = 0.000075
 OPR_MAX_ATR, OPR_MIN_COUT, STOP_MIN_COUT = 0.25, 10.0, 6.67
 ATR_MIN, ATR_FORT, VEILLE_MIN = 1.7, 2.1, 1.0
-CAPITAL = float(os.environ.get("OR_CAPITAL", "10000"))      # compte FTMO 10K
-RISQUES = (1.0, 0.5)                                          # % : normal / garde-fou
+CAPITAL = float(os.environ.get("OR_CAPITAL", "10000"))      # compte FTMO 10K (1-Step)
+# % : normal / garde-fou. 0,7 % depuis le 13/11/2026 (FTMO 1-Step, perte max suiveuse) ;
+# garde-fou = moitie du risque, a utiliser des -5 R sous le plus haut du compte.
+RISQUES = (0.7, 0.35)
 ETAT = ".or_asie_state"
 JOURNAL = "journal_or.csv"
 JOURNAL_NUITS = "journal_or_nuits.csv"   # une ligne par nuit, trade ou pas (base d'etude)
@@ -209,6 +211,10 @@ def lots(risque_px, pct):
     return max(np.floor(CAPITAL * pct / 100 / (risque_px * 100) * 100) / 100, 0.0)
 
 
+def pct(x):
+    return f"{x:g}".replace(".", ",") + " %"
+
+
 def msg_signal(sig, ra):
     sens = "🟢 ACHAT" if sig["side"] == 1 else "🔴 VENTE"
     l1, l05 = lots(sig["risque"], RISQUES[0]), lots(sig["risque"], RISQUES[1])
@@ -218,7 +224,7 @@ def msg_signal(sig, ra):
            f"SL : {sig['sl']:.2f}  ({sig['risque']:.2f} $)\n"
            f"TP 2R : {sig['tp']:.2f}\n"
            f"Sortie forcee : 05h00\n\n"
-           f"Lots (compte {CAPITAL:,.0f} $) : {l1:.2f} a 1 %  |  {l05:.2f} a 0,5 % (garde-fou)\n"
+           f"Lots (compte {CAPITAL:,.0f} $) : {l1:.2f} a {pct(RISQUES[0])}  |  {l05:.2f} a {pct(RISQUES[1])} (garde-fou)\n"
            f"{ra['pourquoi']} — RSI {sig['rsi']:.1f}\n"
            f"Garde ces SL / TP meme si ton prix d'entree differe de quelques centimes.")
     if l1 < 0.01:
