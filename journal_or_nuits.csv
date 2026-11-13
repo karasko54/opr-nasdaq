@@ -1,0 +1,2 @@
+date,motif,regle_a,atr_pct,veille_atr,atr_usd,opr_haut,opr_bas,opr_usd,opr_sur_atr,nb_refus,refus,signal_heure,sens,entree,sl,tp,stop_usd,stop_sur_opr,rsi,retard_signal_s,issue,R,duree_min,heure_issue
+2026-11-13,trade,oui,2.347,1.627,90.98,3916.34,3907.68,8.66,0.0952,0,,03:15,vente,3907.51,3911.26,3900.02,3.75,0.433,56.0,5,SL,-1.00,18,03:33

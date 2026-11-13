@@ -1,3 +1,22 @@
 {
- "verdict_2026-11-13": true
+ "jour": "2026-11-13",
+ "verdict_2026-11-13": true,
+ "sig": {
+  "t": "03:10",
+  "t_ferm": "2026-11-13T03:15:00+01:00",
+  "side": -1,
+  "e": 3907.509,
+  "sl": 3911.255,
+  "tp": 3900.017,
+  "risque": 3.7460000000000946,
+  "rsi": 55.983866516785994,
+  "trop_petit": false
+ },
+ "retard_signal_s": 5,
+ "signal": true,
+ "point_5min": true,
+ "issue": true,
+ "journal": true,
+ "journal_nuit": true,
+ "fini": true
 }
