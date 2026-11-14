@@ -16,7 +16,7 @@ Regles = celles du backtest (opr_asie_marches.py + regle A), heure de Paris :
 Modes :
   python or_asie.py verdict   -> le soir (~23h10) : "cette nuit trade possible / pas de trade"
   python or_asie.py nuit      -> lance vers 02h15 : surveille jusqu'a 05h02 et envoie
-                                 le SIGNAL (sonore), le point +2 min, puis TP / SL / sortie 05h00.
+                                 le SIGNAL (sonore), puis TP / SL / sortie 05h00.
                                  Nuit sans trade : UNE ligne silencieuse (ou rien si le verdict du
                                  soir avait deja dit "pas de trade"). Le detail va dans journal_or_nuits.csv.
   python or_asie.py rejouer AAAA-MM-JJ -> rejoue une nuit passee sans rien envoyer (controle)
@@ -60,7 +60,6 @@ ETAT = ".or_asie_state"
 JOURNAL = "journal_or.csv"
 JOURNAL_NUITS = "journal_or_nuits.csv"   # une ligne par nuit, trade ou pas (base d'etude)
 PAUSE = 5            # s entre deux lectures du prix
-POINT_MIN = 2        # min apres le signal : point de controle "SL/TP poses ?"
 RAPIDE_MIN = 5       # TP/SL touche en moins de N min -> alerte sonore "n'entre plus"
 MARGE_FLUX = 45      # s : au-dela, on n'attend plus la derniere bougie M1 (minute sans cotation)
 
@@ -499,17 +498,6 @@ def nuit(jour=None, test=False, maintenant=None, env=None):
                 if not test:
                     journal_nuit(e, jour, "trade", ra, res, sig, issue, R, t)
                 e["fini"] = True; ecrire_etat(e) if not test else None; return
-            # point de controle peu apres le signal : position encore ouverte -> SL et TP poses ?
-            t5 = pd.Timestamp(sig["t_ferm"]) + pd.Timedelta(minutes=POINT_MIN)
-            if t5 <= now < t5 + pd.Timedelta(minutes=10) and len(m1):
-                px = float(m1["close"].iloc[-1])
-                r = sig["side"] * (px - sig["e"]) / sig["risque"]
-                envoyer(e, "point_5min",
-                        f"🔔 OR ASIE — point +{POINT_MIN} min : position toujours ouverte\n"
-                        f"Prix {px:.2f}  ({r:+.2f} R)\n"
-                        f"VERIFIE dans MT5 que les deux ordres sont poses :\n"
-                        f"SL {sig['sl']:.2f}   |   TP {sig['tp']:.2f}\n"
-                        f"Ensuite tu peux te rendormir : je te previens au TP, au SL, ou a 04h55.", test=test)
             if now >= jour + pd.Timedelta(hours=4, minutes=55) and not e.get("rappel_0500"):
                 envoyer(e, "rappel_0500", "⏰ OR ASIE : sortie forcee a 05h00 — prepare-toi a fermer la position.", test=test)
         elif res["fin_fenetre"]:

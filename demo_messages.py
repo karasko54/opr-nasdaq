@@ -77,11 +77,6 @@ MESSAGES = [
                       "Signal possible entre 02h35 et 04h10 (alerte sonore), sortie 05h00.\n"
                       "Sans signal : une seule ligne silencieuse en fin de nuit.")),
     ("03h15", False, or_asie.msg_signal(SIG, RA)),
-    ("03h17", False, ("🔔 OR ASIE — point +2 min : position toujours ouverte\n"
-                      "Prix 3905.18  (+0.62 R)\n"
-                      "VERIFIE dans MT5 que les deux ordres sont poses :\n"
-                      "SL 3911.26   |   TP 3900.02\n"
-                      "Ensuite tu peux te rendormir : je te previens au TP, au SL, ou a 04h55.")),
     ("03h33", True, "❌ OR ASIE 13/11 : SL a 03:32  ->  -1.00 R (avant frais)"),
     ("selon le jour", True, ("Les autres messages possibles, une ligne chacun :\n\n"
                              "✅ OR ASIE 11/11 : TP a 03:19  ->  +2.00 R (avant frais)\n\n"
