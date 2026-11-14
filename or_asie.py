@@ -54,6 +54,8 @@ COUT = 0.000075
 OPR_MAX_ATR, OPR_MIN_COUT, STOP_MIN_COUT = 0.25, 10.0, 6.67
 ATR_MIN, ATR_FORT, VEILLE_MIN = 1.7, 2.1, 1.0
 CAPITAL = float(os.environ.get("OR_CAPITAL", "10000"))      # compte FTMO 10K (1-Step)
+DEVISE = os.environ.get("OR_DEVISE", "EUR").upper()          # devise du compte : EUR (choix du 14/11/2026) ou USD
+TAUX_SECOURS = 1.0   # $ pour 1 EUR si le taux est introuvable : volontairement bas -> lots plus petits, jamais plus gros
 # % de risque pour lesquels le message SIGNAL donne le lot a prendre (13/11/2026).
 RISQUES = (1.0, 0.7, 0.5)
 ETAT = ".or_asie_state"
@@ -65,13 +67,13 @@ MARGE_FLUX = 45      # s : au-dela, on n'attend plus la derniere bougie M1 (minu
 
 
 # ── Donnees Dukascopy ───────────────────────────────────────────────────────
-def _dk(interval, depuis_ms):
+def _dk(interval, depuis_ms, instrument="XAU/USD", timeout=30):
     jsonp = "_callbacks____" + "".join(random.choices(string.ascii_letters + string.digits, k=9))
     p = {"path": "chart/json3", "splits": "true", "stocks": "true", "time_direction": "N",
          "jsonp": jsonp, "last_update": str(int(depuis_ms)), "offer_side": "B",
-         "instrument": "XAU/USD", "interval": interval}
+         "instrument": instrument, "interval": interval}
     h = {"User-Agent": "Mozilla/5.0", "Referer": "https://freeserv.dukascopy.com/2.0/"}
-    r = requests.get("https://freeserv.dukascopy.com/2.0/index.php", params=p, headers=h, timeout=30)
+    r = requests.get("https://freeserv.dukascopy.com/2.0/index.php", params=p, headers=h, timeout=timeout)
     r.raise_for_status()
     return json.loads(r.text.removeprefix(jsonp + "(").removesuffix(");"))
 
@@ -205,8 +207,30 @@ def suivre(m1, sig, maintenant, jour):
 
 
 # ── Messages ────────────────────────────────────────────────────────────────
-def lots(risque_px, pct):
-    return max(np.floor(CAPITAL * pct / 100 / (risque_px * 100) * 100) / 100, 0.0)
+_TAUX = {}
+
+
+def taux_eurusd():
+    """(dollars pour 1 unite de la devise du compte, taux fiable ?). Lu une fois par execution sur
+    Dukascopy (derniere bougie H1 EUR/USD) ; ne leve jamais d'erreur : le SIGNAL ne doit pas en dependre."""
+    if DEVISE == "USD":
+        return 1.0, True
+    if "v" not in _TAUX:
+        for essai in range(2):
+            try:
+                r = _dk("1HOUR", (time.time() - 6 * 86400) * 1000, "EUR/USD", timeout=10)
+                v = float(r[-1][4])
+                if not 0.8 < v < 1.6:
+                    raise ValueError(f"taux aberrant {v}")
+                _TAUX["v"] = v; break
+            except Exception as ex:
+                print(f"taux EUR/USD indisponible ({essai + 1}/2) : {ex!r}")
+    return (_TAUX["v"], True) if "v" in _TAUX else (TAUX_SECOURS, False)
+
+
+def lots(risque_px, pct, taux=1.0):
+    """1 lot = 100 onces, cotees en dollars : le risque (dans la devise du compte) est converti en dollars."""
+    return max(np.floor(CAPITAL * pct / 100 * taux / (risque_px * 100) * 100) / 100, 0.0)
 
 
 def pct(x):
@@ -216,8 +240,14 @@ def pct(x):
 def msg_signal(sig, ra):
     sens = "🟢 ACHAT" if sig["side"] == 1 else "🔴 VENTE"
     lignes = []
+    taux, fiable = taux_eurusd()
+    if DEVISE == "USD":
+        compte = f"{CAPITAL:,.0f} $".replace(",", " ")
+    else:
+        compte = f"{CAPITAL:,.0f} €".replace(",", " ") + (f", 1 € = {taux:.4f} $".replace(".", ",") if fiable
+                                                           else ", taux €/$ indisponible : lots calcules au plus prudent")
     for r in RISQUES:
-        l = lots(sig["risque"], r)
+        l = lots(sig["risque"], r, taux)
         lignes.append(f"  {pct(r)} : {l:.2f} lot" if l >= 0.01 else f"  {pct(r)} : impossible (stop trop large, moins de 0,01 lot)")
     txt = (f"🚨 OR ASIE — {sens} XAUUSD\n"
            f"Cassure cloturee a {sig['t_ferm'][11:16]}\n\n"
@@ -225,7 +255,7 @@ def msg_signal(sig, ra):
            f"SL : {sig['sl']:.2f}  ({sig['risque']:.2f} $)\n"
            f"TP 2R : {sig['tp']:.2f}\n"
            f"Sortie forcee : 05h00\n\n"
-           f"Lot a prendre (compte {CAPITAL:,.0f} $) :\n" + "\n".join(lignes) + "\n"
+           f"Lot a prendre (compte {compte}) :\n" + "\n".join(lignes) + "\n"
            f"{ra['pourquoi']} — RSI {sig['rsi']:.1f}\n"
            f"Garde ces SL / TP meme si ton prix d'entree differe de quelques centimes.")
     return txt
@@ -418,6 +448,7 @@ def nuit(jour=None, test=False, maintenant=None, env=None):
         e = {"jour": str(jour.date()), **{k: v for k, v in e.items() if k == "verdict_" + str(jour.date())}}
     if e.get("fini") and not test:
         print("nuit deja traitee"); return
+    taux_eurusd()                                   # lu maintenant : aucun appel de plus au moment du signal
     try:
         ra = regle_a(env.h1(), jour)
     except Exception as ex:
