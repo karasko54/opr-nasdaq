@@ -18,5 +18,6 @@
  "issue": true,
  "journal": true,
  "journal_nuit": true,
- "fini": true
+ "fini": true,
+ "verdict_2026-11-16": "oui"
 }
