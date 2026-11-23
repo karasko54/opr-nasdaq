@@ -1,8 +1,21 @@
 {
- "jour": "2026-11-20",
- "verdict_2026-11-20": "oui",
- "rien": true,
+ "jour": "2026-11-23",
+ "verdict_2026-11-23": "oui",
+ "sig": {
+  "t": "02:35",
+  "t_ferm": "2026-11-23T02:40:00+01:00",
+  "side": -1,
+  "e": 3606.625,
+  "sl": 3612.665,
+  "tp": 3594.545,
+  "risque": 6.039999999999964,
+  "rsi": 59.314619089019686,
+  "trop_petit": false
+ },
+ "retard_signal_s": 6,
+ "signal": true,
+ "issue": true,
+ "journal": true,
  "journal_nuit": true,
- "fini": true,
- "verdict_2026-11-23": "oui"
+ "fini": true
 }
