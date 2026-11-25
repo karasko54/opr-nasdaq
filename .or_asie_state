@@ -1,22 +1,21 @@
 {
- "jour": "2026-11-24",
- "verdict_2026-11-24": "oui",
+ "jour": "2026-11-25",
+ "verdict_2026-11-25": "oui",
  "sig": {
-  "t": "02:35",
-  "t_ferm": "2026-11-24T02:40:00+01:00",
+  "t": "02:40",
+  "t_ferm": "2026-11-25T02:45:00+01:00",
   "side": 1,
-  "e": 3675.36,
-  "sl": 3669.885,
-  "tp": 3686.31,
-  "risque": 5.474999999999909,
-  "rsi": 73.10781040498419,
+  "e": 3551.787,
+  "sl": 3543.575,
+  "tp": 3568.211,
+  "risque": 8.211999999999989,
+  "rsi": 64.79388510760745,
   "trop_petit": false
  },
- "retard_signal_s": 8,
+ "retard_signal_s": 5,
  "signal": true,
  "issue": true,
  "journal": true,
  "journal_nuit": true,
- "fini": true,
- "verdict_2026-11-25": "oui"
+ "fini": true
 }
